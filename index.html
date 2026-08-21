@@ -279,7 +279,7 @@ tr:last-child td { border-bottom: 0; }
 
     <!-- Overview tab -->
     <div data-pane="overview">
-      <div class="grid cols-3" style="margin-bottom:14px" id="wall"></div>
+      <div class="grid cols-2" style="margin-bottom:14px" id="wall"></div>
 
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:20px 0 14px">
         <div class="seg" id="seg" role="group" aria-label="Which money are you looking at"></div>
@@ -468,11 +468,6 @@ function renderWall(){
       + '<div class="tile-value" style="margin-top:6px'+(Number(e.net_worth)<0?';color:var(--critical)':'')+'">'+fmt(Number(e.net_worth))+'</div>'
       + '<div class="tile-label">'+fmtK(Number(e.assets))+' assets · '+fmtK(Number(e.liabilities))+' owed · '+e.account_count+' account'+(Number(e.account_count)===1?'':'s')+'</div></div>';
   });
-  var total = D.wall.reduce(function(s,e){ return s+Number(e.net_worth); },0);
-  var c1 = D.wall[0]?D.wall[0].entity_color:"#2a78d6", c2 = D.wall[1]?D.wall[1].entity_color:"#eb6834";
-  h += '<div class="card"><div class="stripe" style="background:linear-gradient(90deg,'+c1+' 50%,'+c2+' 50%)"></div>'
-    + '<div class="card-title">Combined</div><div class="tile-value" style="margin-top:6px">'+fmt(total)+'</div>'
-    + '<div class="tile-label">Everything, both sides of the wall</div></div>';
   $("wall").innerHTML = h;
 }
 
@@ -481,8 +476,6 @@ function renderSeg(){
   D.wall.forEach(function(e){
     h += '<button data-ent="'+e.entity_slug+'" aria-pressed="'+(D.mode===e.entity_slug)+'"><i class="dot" style="background:'+e.entity_color+'"></i>'+esc(e.entity_name)+'</button>';
   });
-  var c1 = D.wall[0]?D.wall[0].entity_color:"#2a78d6", c2 = D.wall[1]?D.wall[1].entity_color:"#eb6834";
-  h += '<button data-ent="all" aria-pressed="'+(D.mode==="all")+'"><i class="dot" style="background:linear-gradient(90deg,'+c1+' 50%,'+c2+' 50%)"></i>Combined</button>';
   $("seg").innerHTML = h;
   Array.prototype.forEach.call($("seg").querySelectorAll("button"), function(b){
     b.onclick=function(){ D.mode=b.getAttribute("data-ent"); renderOverview(); };
@@ -889,6 +882,7 @@ window.addEventListener("hashchange", function(){
 /* ---------- boot ---------- */
 async function refresh(){
   await loadAll();
+  if(D.mode==="all") D.mode = D.entities[0] ? D.entities[0].entity_slug : "personal";
   renderOverview(); renderAccounts(); renderTx(); renderConnect();
 }
 async function boot(){
