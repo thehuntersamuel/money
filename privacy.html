@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money Hub — Privacy Policy</title>
+<style>
+  :root{--bg:#080c12;--surface:#11161c;--border:#1d2229;--text:#e6e9ee;--muted:#8b94a1;--accent:#2a78d6;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:16px/1.65 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:48px 20px}
+  main{max-width:720px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:-.01em;margin-bottom:4px}
+  .meta{color:var(--muted);font-size:13px;margin-bottom:28px}
+  h2{font-size:17px;margin:28px 0 8px;color:var(--text)}
+  p,li{color:#c3c9d2;font-size:15px}
+  ul{padding-left:22px;margin:8px 0}
+  li{margin:4px 0}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:28px 30px}
+  .foot{color:var(--muted);font-size:13px;margin-top:26px}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Money Hub — Privacy Policy</h1>
+    <p class="meta">Effective August 21, 2026 · Last updated August 21, 2026</p>
+
+    <p>Money Hub is a private, single-user personal finance dashboard operated by its owner, Hunter Riley, for his own use. It is not offered to the public, has no customers, and collects no data from anyone other than the owner. This policy describes how the application handles the owner's own financial data.</p>
+
+    <h2>What data is collected</h2>
+    <ul>
+      <li>Account information (institution names, account names, types, and balances)</li>
+      <li>Transaction history, investment holdings, and liability details for the owner's linked accounts</li>
+      <li>An email address and password used solely to sign in to the dashboard</li>
+    </ul>
+    <p>Bank sign-in credentials are entered only within Plaid Link, Plaid's secure widget, and are never seen or stored by Money Hub.</p>
+
+    <h2>How data is used</h2>
+    <p>Data is used exclusively to display the owner's net worth, cash flow, spending, and debt inside the dashboard. It is never sold, rented, shared, or used for advertising, and there are no third-party recipients beyond the service providers below.</p>
+
+    <h2>Service providers</h2>
+    <ul>
+      <li><a href="https://plaid.com/legal/#end-user-privacy-policy" rel="noopener">Plaid</a> — connects to financial institutions and retrieves account data</li>
+      <li><a href="https://supabase.com/privacy" rel="noopener">Supabase</a> — hosts the database, authentication, and server functions</li>
+      <li>GitHub Pages — serves this static page and the dashboard's front end (no financial data passes through it)</li>
+    </ul>
+
+    <h2>Security</h2>
+    <p>All traffic is encrypted in transit with TLS. All stored data is encrypted at rest. Plaid access tokens are additionally encrypted at the application layer with AES-256-GCM, using a key held only in the server environment and never exposed to the browser. Database access is restricted by row-level security to the single owner account, and the application uses read-only Plaid products — it cannot move money.</p>
+
+    <h2>Data retention and deletion</h2>
+    <p>Data is retained only while the owner keeps an institution linked and the dashboard in use. Unlinking an institution removes its connection at Plaid and invalidates its access token; the owner may delete stored account and transaction records at any time, and deleting the project removes all stored data permanently. This policy and the retention practice are reviewed quarterly.</p>
+
+    <h2>Consent and rights</h2>
+    <p>The owner is the only data subject and consents to this processing by operating the application. Plaid's handling of end-user data is described in <a href="https://plaid.com/legal/#end-user-privacy-policy" rel="noopener">Plaid's End User Privacy Policy</a>.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy: <a href="mailto:hunter.riley2525@gmail.com">hunter.riley2525@gmail.com</a></p>
+  </div>
+  <p class="foot"><a href="./">← Back to Money Hub</a></p>
+</main>
+</body>
+</html>
