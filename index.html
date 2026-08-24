@@ -1357,9 +1357,15 @@ function showTab(name){
     a.setAttribute("data-active", a.getAttribute("data-tab")===name ? "true":"false");
   });
 }
+/* Derived from the panes that actually exist, so adding a tab never needs a
+   second edit here. */
+function knownTabs(){
+  return Array.prototype.map.call(document.querySelectorAll("[data-pane]"), function(p){
+    return p.getAttribute("data-pane"); });
+}
 window.addEventListener("hashchange", function(){
   var h=location.hash.replace("#","")||"overview";
-  if(["overview","accounts","transactions","connect"].indexOf(h)>=0) showTab(h);
+  if(knownTabs().indexOf(h)>=0) showTab(h);
 });
 
 /* ---------- boot ---------- */
@@ -1369,6 +1375,8 @@ async function refresh(){
   renderOverview(); renderAccounts(); renderTx(); renderInvestments(); renderConnect();
 }
 async function boot(){
+  var h0=location.hash.replace("#","");
+  if(h0 && knownTabs().indexOf(h0)>=0) showTab(h0);
   var s=await sb.auth.getSession();
   if(!s.data.session) return;
   $("login").style.display="none";
