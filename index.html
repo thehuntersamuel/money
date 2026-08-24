@@ -287,7 +287,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
     <nav class="nav" id="nav" style="display:none">
       <a href="#overview" data-tab="overview" data-active="true">Overview</a>
       <a href="#accounts" data-tab="accounts">Accounts</a>
-      <a href="#transactions" data-tab="transactions">Transactions</a>
+      <a href="#transactions" data-tab="investments">Investments</a><a href="#transactions" data-tab="transactions">Transactions</a>
       <a href="#connect" data-tab="connect">Connect</a>
     </nav>
     <a id="signout" class="text-button" style="cursor:pointer;display:none">Sign out</a>
@@ -377,6 +377,14 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
     <div data-pane="accounts" style="display:none"><div id="accounts-body"></div></div>
 
     <!-- Transactions tab -->
+    <div data-pane="investments" style="display:none">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <span class="small muted" id="inv-count" style="margin-left:auto"></span>
+      </div>
+      <div id="inv-tiles" class="tiles" style="margin-bottom:16px"></div>
+      <div id="inv-body"></div>
+    </div>
+
     <div data-pane="transactions" style="display:none">
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <label class="small muted" style="display:flex;gap:6px;align-items:center">
@@ -493,13 +501,15 @@ async function loadAll(){
     q("buckets", {order:{col:"sort_order",asc:true}}),
     sb.from("plaid_items").select("id, institution_name, status, last_synced_at, entity_id, granted_products").then(function(r){ return r.data||[]; }),
     sb.from("excluded_accounts").select("*").order("excluded_at",{ascending:false}).then(function(r){ return r.data||[]; }),
-    sb.from("classification_rules").select("*").order("priority",{ascending:true}).then(function(r){ return r.data||[]; })
+    sb.from("classification_rules").select("*").order("priority",{ascending:true}).then(function(r){ return r.data||[]; }),
+    q("v_holdings", {order:{col:"institution_value",asc:false}})
   ]);
   D.wall=res[0]; D.hist=res[1]; D.cashflow=res[2]; D.spend=res[3]; D.health=res[4];
   D.goals=res[5]; D.debt=res[6]; D.attention=res[7]; D.accounts=res[8]; D.tx=res[9];
   D.buckets=res[10]; D.items=res[11];
   D.excluded = res[12] || [];
   D.rules = res[13] || [];
+  D.holdings = res[14] || [];
   D.allAccounts = D.accounts;
   D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
@@ -1155,6 +1165,101 @@ function renderRules(){
 
 $("hide-internal").onchange=function(){ renderTx(); };
 
+/* ---------- render: investments ---------- */
+function renderInvestments(){
+  var hs = D.holdings || [];
+  var box = $("inv-body"), tiles = $("inv-tiles"), cnt = $("inv-count");
+  if(!box) return;
+  if(!hs.length){
+    if(tiles) tiles.innerHTML="";
+    if(cnt) cnt.textContent="";
+    box.innerHTML='<section class="card"><div class="empty">No holdings yet. Connect a brokerage or retirement account on the Connect tab.</div></section>';
+    return;
+  }
+
+  /* Cash inside a brokerage is a position Plaid reports as a currency. It is
+     real money but it is not an investment, so it is counted separately. */
+  function isCash(h){ return String(h.ticker||"").indexOf("CUR:")===0 || String(h.security_type||"")==="cash"; }
+
+  var invested = hs.filter(function(h){ return !isCash(h); });
+  var value = hs.reduce(function(n,h){ return n+Number(h.institution_value||0); },0);
+  var cash  = hs.filter(isCash).reduce(function(n,h){ return n+Number(h.institution_value||0); },0);
+  var basis = invested.reduce(function(n,h){ return n+Number(h.cost_basis||0); },0);
+  var mkt   = invested.reduce(function(n,h){ return n+Number(h.institution_value||0); },0);
+  var gain  = mkt - basis;
+  var gpct  = basis>0 ? (gain/basis*100) : null;
+
+  if(cnt) cnt.textContent = hs.length+" position"+(hs.length===1?"":"s");
+
+  if(tiles){
+    tiles.innerHTML =
+      tile("Total value", fmt(value), "everything in brokerage + retirement")
+    + tile("Invested", fmt(mkt), basis>0?("cost basis "+fmt(basis)):"—")
+    + tile("Unrealized", (gain>=0?"+":"")+fmt(gain),
+           gpct===null?"no cost basis reported":((gain>=0?"+":"")+gpct.toFixed(2)+"%"),
+           gain>=0?"var(--success)":"var(--danger)")
+    + tile("Cash", fmt(cash), "uninvested inside these accounts");
+  }
+  function tile(label, big, sub, color){
+    return '<article class="metric-card"><div class="micro-label">'+esc(label.toUpperCase())+'</div>'
+      + '<div class="metric-value mono"'+(color?' style="color:'+color+'"':'')+'>'+esc(big)+'</div>'
+      + '<div class="metric-sub small muted">'+esc(sub)+'</div></article>';
+  }
+
+  /* Grouped by the wall first, then by account, same as everywhere else. */
+  var h="";
+  D.entities.forEach(function(e){
+    var mine = hs.filter(function(x){ return x.entity_id===e.entity_id; });
+    if(!mine.length) return;
+    var eVal = mine.reduce(function(n,x){ return n+Number(x.institution_value||0); },0);
+    h += '<div style="margin-bottom:16px"><section class="card"><div class="stripe" style="background:'+e.entity_color+'"></div>'
+      +  '<header class="card-head"><h2 class="card-title">'+esc(e.entity_name)+'</h2>'
+      +  '<div class="card-sub">'+fmt(eVal)+' across '+mine.length+' position'+(mine.length===1?'':'s')+'</div></header>';
+
+    var accts=[];
+    mine.forEach(function(x){ if(accts.indexOf(x.account_name)<0) accts.push(x.account_name); });
+    accts.forEach(function(an){
+      var rows = mine.filter(function(x){ return x.account_name===an; })
+                     .sort(function(a,b){ return Number(b.institution_value||0)-Number(a.institution_value||0); });
+      var aVal = rows.reduce(function(n,x){ return n+Number(x.institution_value||0); },0);
+      var first = rows[0];
+      h += '<div style="padding:12px 16px 4px"><div style="display:flex;justify-content:space-between;align-items:baseline">'
+        +  '<span class="micro-label">'+esc(String(an).toUpperCase())+(first.account_mask?' ··'+esc(first.account_mask):'')+'</span>'
+        +  '<span class="small muted mono">'+fmt(aVal)+'</span></div></div>';
+      h += '<div class="table-wrap"><table><thead><tr>'
+        +  '<th>Holding</th><th class="num">Qty</th><th class="num">Price</th>'
+        +  '<th class="num">Value</th><th class="num">Cost</th><th class="num">Gain</th></tr></thead><tbody>';
+      rows.forEach(function(x){
+        var g = x.cost_basis!=null ? Number(x.gain_abs||0) : null;
+        var pct = x.gain_pct;
+        h += '<tr><td>'+(isCash(x)
+               ? '<span class="muted">Cash</span>'
+               : '<strong>'+esc(x.ticker||'—')+'</strong><div class="small muted">'+esc(trim(x.security_name))+'</div>')+'</td>'
+          +  '<td class="num mono small">'+(isCash(x)?'—':esc(qty(x.quantity)))+'</td>'
+          +  '<td class="num mono small">'+(isCash(x)||x.institution_price==null?'—':fmt2(Number(x.institution_price)))+'</td>'
+          +  '<td class="num mono">'+fmt2(Number(x.institution_value||0))+'</td>'
+          +  '<td class="num mono small muted">'+(x.cost_basis==null?'—':fmt2(Number(x.cost_basis)))+'</td>'
+          +  '<td class="num mono small"'+(g===null?'':' style="color:'+(g>=0?'var(--success)':'var(--danger)')+'"')+'>'
+          +  (g===null?'—':((g>=0?'+':'')+fmt2(g)+(pct==null?'':' <span style="opacity:.7">'+(Number(pct)>=0?'+':'')+Number(pct).toFixed(1)+'%</span>')))
+          +  '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    });
+    h += '</section></div>';
+  });
+  box.innerHTML = h + '<p class="small muted">Prices come from your broker at the last sync, not a live market feed. '
+    + 'Cash held inside a brokerage is listed as a position but kept out of the gain calculation.</p>';
+
+  function trim(n){ n=String(n||""); return n.length>58 ? n.slice(0,55)+"…" : n; }
+  function qty(q){
+    var n=Number(q||0);
+    if(n===0) return "0";
+    if(Math.abs(n)>=1000) return n.toLocaleString("en-US",{maximumFractionDigits:2});
+    if(Math.abs(n)>=1) return n.toFixed(4).replace(/0+$/,"").replace(/\.$/,"");
+    return n.toFixed(8).replace(/0+$/,"").replace(/\.$/,"");
+  }
+}
+
 /* ---------- render: connect ---------- */
 var linkEntity="personal";
 function linkMsg(kind,t){ $("link-msg").innerHTML=t?'<div class="banner '+kind+'" style="margin:12px 0 0">'+esc(t)+'</div>':""; }
@@ -1261,7 +1366,7 @@ window.addEventListener("hashchange", function(){
 async function refresh(){
   await loadAll();
   if(D.mode==="all") D.mode = D.entities[0] ? D.entities[0].entity_slug : "personal";
-  renderOverview(); renderAccounts(); renderTx(); renderConnect();
+  renderOverview(); renderAccounts(); renderTx(); renderInvestments(); renderConnect();
 }
 async function boot(){
   var s=await sb.auth.getSession();
