@@ -481,7 +481,7 @@ async function loadAll(){
     q("v_goal_progress"),
     q("v_debt"),
     q("v_attention"),
-    q("v_accounts", {order:{col:"entity_slug",asc:true}}),
+    q("v_accounts_manage", {order:{col:"entity_slug",asc:true}}),
     q("v_tx", {order:{col:"posted_on",asc:false}, limit:200}),
     q("buckets", {order:{col:"sort_order",asc:true}}),
     sb.from("plaid_items").select("id, institution_name, status, last_synced_at, entity_id, granted_products").then(function(r){ return r.data||[]; })
@@ -489,6 +489,8 @@ async function loadAll(){
   D.wall=res[0]; D.hist=res[1]; D.cashflow=res[2]; D.spend=res[3]; D.health=res[4];
   D.goals=res[5]; D.debt=res[6]; D.attention=res[7]; D.accounts=res[8]; D.tx=res[9];
   D.buckets=res[10]; D.items=res[11];
+  D.allAccounts = D.accounts;
+  D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
 }
 
@@ -743,41 +745,155 @@ function renderOverview(){
 
 /* ---------- render: accounts ---------- */
 function renderAccounts(){
-  if(!D.accounts.length){ $("accounts-body").innerHTML='<div class="empty">No accounts yet. Connect a bank first.</div>'; return; }
-  var h="";
+  var all = D.allAccounts || D.accounts;
+  if(!all.length){ $("accounts-body").innerHTML='<div class="empty">No accounts yet. Connect a bank first.</div>'; return; }
+  if(!D.acctSel) D.acctSel = {};
+  var showHidden = !!D.showHidden;
+  var sel = D.acctSel;
+  var selIds = Object.keys(sel).filter(function(k){ return sel[k]; });
+
+  var entOpts = D.entities.map(function(e){
+    return '<option value="'+e.entity_id+'">'+esc(e.entity_name)+'</option>'; }).join("");
+
+  var h = '';
+
+  /* --- bulk bar --- */
+  h += '<section class="card" style="margin-bottom:16px"><div class="card-body" style="padding:14px 16px">'
+    +  '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">'
+    +  '<span class="micro-label">BULK</span>'
+    +  '<span class="small muted" id="bulk-count">'+selIds.length+' selected</span>'
+    +  '<span style="flex:1"></span>'
+    +  '<select id="bulk-entity" class="btn" style="padding:6px 10px"><option value="">Move selected to…</option>'+entOpts+'</select>'
+    +  '<button class="btn" id="bulk-hide" style="padding:6px 12px">Hide selected</button>'
+    +  '<button class="btn" id="bulk-show" style="padding:6px 12px">Unhide selected</button>'
+    +  '<button class="btn" id="bulk-clear" style="padding:6px 12px">Clear</button>'
+    +  '<label class="small muted" style="display:flex;gap:6px;align-items:center;cursor:pointer">'
+    +  '<input type="checkbox" id="show-hidden"'+(showHidden?' checked':'')+'> show hidden</label>'
+    +  '</div></div></section>';
+
   D.entities.forEach(function(e){
-    var list=D.accounts.filter(function(a){return a.entity_id===e.entity_id;});
-    h+='<div style="margin-bottom:16px"><section class="card"><div class="stripe" style="background:'+e.entity_color+'"></div>'
-     +'<header class="card-head"><h2 class="card-title">'+esc(e.entity_name)+'</h2><div class="card-sub">'+fmt(Number(e.net_worth))+' net · '+list.length+' accounts</div></header>';
-    if(!list.length){ h+='<div class="empty">Nothing linked to '+esc(e.entity_name)+' yet.</div>'; }
-    else{
-      h+='<div class="table-wrap"><table><thead><tr><th>Account</th><th>Institution</th><th>Type</th><th class="num">Balance</th><th>Synced</th><th>Move to</th></tr></thead><tbody>';
+    var list = all.filter(function(a){
+      return a.entity_id===e.entity_id && (showHidden || !a.is_hidden);
+    });
+    h += '<div style="margin-bottom:16px"><section class="card"><div class="stripe" style="background:'+e.entity_color+'"></div>'
+      +  '<header class="card-head"><h2 class="card-title">'+esc(e.entity_name)+'</h2>'
+      +  '<div class="card-sub">'+fmt(Number(e.net_worth))+' net · '+e.account_count+' active</div></header>';
+    if(!list.length){
+      h += '<div class="empty">Nothing linked to '+esc(e.entity_name)+' yet.</div>';
+    } else {
+      h += '<div class="table-wrap"><table><thead><tr>'
+        +  '<th style="width:34px"><input type="checkbox" data-selall="'+e.entity_id+'"></th>'
+        +  '<th>Account</th><th>Institution</th><th>Type</th><th class="num">Balance</th>'
+        +  '<th>Entity</th><th></th></tr></thead><tbody>';
       list.forEach(function(a){
-        h+='<tr><td>'+esc(a.name)+(a.mask?' <span class="muted small">··'+esc(a.mask)+'</span>':'')
-         +(a.entity_is_pinned?' <span class="pill">pinned</span>':'')+'</td>'
-         +'<td class="small muted">'+esc(a.institution_name||"—")+'</td>'
-         +'<td class="small muted">'+esc(a.subtype||a.type)+'</td>'
-         +'<td class="num mono'+(a.is_liability?' neg':'')+'">'+fmt(Number(a.current_balance))+'</td>'
-         +'<td class="small muted">'+ago(a.last_synced_at)+'</td><td>';
-        D.entities.filter(function(x){return x.entity_id!==a.entity_id;}).forEach(function(x){
-          h+='<button class="btn" style="padding:4px 10px;font-size:12.5px" data-move="'+a.id+'" data-to="'+x.entity_id+'">→ '+esc(x.entity_name)+'</button> ';
-        });
-        h+='</td></tr>';
+        var disp = a.display_name || a.name;
+        h += '<tr'+(a.is_hidden?' style="opacity:.45"':'')+'>'
+          +  '<td><input type="checkbox" data-sel="'+a.id+'"'+(sel[a.id]?' checked':'')+'></td>'
+          +  '<td><span class="acct-name" data-rename="'+a.id+'" title="click to rename" style="cursor:text;border-bottom:1px dotted var(--border)">'+esc(disp)+'</span>'
+          +  (a.mask?' <span class="muted small">··'+esc(a.mask)+'</span>':'')
+          +  (a.nickname?' <span class="pill">renamed</span>':'')
+          +  (a.entity_is_pinned?' <span class="pill">pinned</span>':'')
+          +  (a.is_hidden?' <span class="pill">hidden</span>':'')
+          +  (a.nickname?'<div class="small muted">'+esc(a.name)+'</div>':'')
+          +  '</td>'
+          +  '<td class="small muted">'+esc(a.institution_name||"—")+'</td>'
+          +  '<td class="small muted">'+esc(a.subtype||a.type||"")+'</td>'
+          +  '<td class="num mono'+(a.is_liability?' neg':'')+'">'+fmt(Number(a.current_balance))+'</td>'
+          +  '<td><select class="btn" style="padding:5px 8px;font-size:12.5px" data-ent="'+a.id+'">'
+          +  D.entities.map(function(x){
+               return '<option value="'+x.entity_id+'"'+(x.entity_id===a.entity_id?' selected':'')+'>'+esc(x.entity_name)+'</option>'; }).join("")
+          +  '</select></td>'
+          +  '<td style="white-space:nowrap">'
+          +  '<button class="btn" style="padding:4px 10px;font-size:12.5px" data-rn="'+a.id+'">Rename</button> '
+          +  '<button class="btn" style="padding:4px 10px;font-size:12.5px" data-hide="'+a.id+'" data-to="'+(a.is_hidden?'0':'1')+'">'+(a.is_hidden?'Unhide':'Remove')+'</button>'
+          +  '</td></tr>';
       });
-      h+='</tbody></table></div>';
+      h += '</tbody></table></div>';
     }
-    h+='</section></div>';
+    h += '</section></div>';
   });
-  $("accounts-body").innerHTML=h+'<p class="small muted">Moving an account pins it, so the next sync will not drag it back.</p>';
-  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-move]"), function(b){
-    b.onclick=async function(){
-      b.disabled=true;
-      var id=b.getAttribute("data-move"), to=b.getAttribute("data-to");
-      var r=await sb.from("accounts").update({entity_id:to, entity_is_pinned:true}).eq("id",id);
-      if(!r.error) await sb.from("transactions").update({entity_id:to}).eq("account_id",id).neq("entity_source","manual");
+
+  $("accounts-body").innerHTML = h
+    + '<p class="small muted">Changing an account’s entity pins it, so the next sync will not drag it back. '
+    + 'Remove hides an account from every total and chart — it is never deleted, and Plaid keeps syncing it, '
+    + 'so you can unhide it any time with <em>show hidden</em>.</p>';
+
+  function markSel(){
+    var n = Object.keys(D.acctSel).filter(function(k){return D.acctSel[k];}).length;
+    var c = $("bulk-count"); if(c) c.textContent = n+" selected";
+  }
+
+  /* per-row checkbox */
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-sel]"), function(cb){
+    cb.onchange=function(){ D.acctSel[cb.getAttribute("data-sel")] = cb.checked; markSel(); };
+  });
+  /* select-all within an entity */
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-selall]"), function(cb){
+    cb.onchange=function(){
+      var eid = cb.getAttribute("data-selall");
+      all.filter(function(a){ return a.entity_id===eid && (D.showHidden||!a.is_hidden); })
+         .forEach(function(a){ D.acctSel[a.id]=cb.checked; });
+      renderAccounts();
+    };
+  });
+  /* entity dropdown */
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-ent]"), function(s2){
+    s2.onchange=async function(){
+      s2.disabled=true;
+      await setEntity([s2.getAttribute("data-ent")], s2.value);
       await refresh();
     };
   });
+  /* rename */
+  function doRename(id){
+    var a = all.filter(function(x){return x.id===id;})[0]; if(!a) return;
+    var cur = a.nickname || "";
+    var v = window.prompt("Nickname for “"+(a.name||"")+"”"+(a.mask?" ··"+a.mask:"")+"\n\nLeave blank to go back to the bank’s own name.", cur);
+    if(v===null) return;
+    v = v.trim();
+    sb.from("accounts").update({nickname: v===""?null:v}).eq("id",id).then(function(){ refresh(); });
+  }
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-rn]"), function(b){
+    b.onclick=function(){ doRename(b.getAttribute("data-rn")); };
+  });
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-rename]"), function(b){
+    b.onclick=function(){ doRename(b.getAttribute("data-rename")); };
+  });
+  /* hide / unhide */
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-hide]"), function(b){
+    b.onclick=async function(){
+      b.disabled=true;
+      await sb.from("accounts").update({is_hidden: b.getAttribute("data-to")==="1"}).eq("id", b.getAttribute("data-hide"));
+      await refresh();
+    };
+  });
+  /* bulk controls */
+  var be=$("bulk-entity"); if(be) be.onchange=async function(){
+    var ids=Object.keys(D.acctSel).filter(function(k){return D.acctSel[k];});
+    if(!be.value || !ids.length){ be.value=""; return; }
+    be.disabled=true;
+    await setEntity(ids, be.value);
+    D.acctSel={}; await refresh();
+  };
+  function bulkHide(v){ return async function(){
+    var ids=Object.keys(D.acctSel).filter(function(k){return D.acctSel[k];});
+    if(!ids.length) return;
+    await sb.from("accounts").update({is_hidden:v}).in("id",ids);
+    D.acctSel={}; await refresh();
+  }; }
+  var bh=$("bulk-hide"); if(bh) bh.onclick=bulkHide(true);
+  var bs=$("bulk-show"); if(bs) bs.onclick=bulkHide(false);
+  var bc=$("bulk-clear"); if(bc) bc.onclick=function(){ D.acctSel={}; renderAccounts(); };
+  var sh=$("show-hidden"); if(sh) sh.onchange=function(){ D.showHidden=sh.checked; renderAccounts(); };
+}
+
+/* Move accounts to an entity, pin them, and carry their non-manual
+   transactions across the wall with them. */
+async function setEntity(ids, entityId){
+  if(!ids.length || !entityId) return;
+  var r = await sb.from("accounts").update({entity_id:entityId, entity_is_pinned:true}).in("id", ids);
+  if(r.error) return;
+  await sb.from("transactions").update({entity_id:entityId}).in("account_id", ids).neq("entity_source","manual");
 }
 
 /* ---------- render: transactions ---------- */
