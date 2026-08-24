@@ -381,7 +381,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <span class="small muted" id="inv-count" style="margin-left:auto"></span>
       </div>
-      <div id="inv-tiles" class="tiles" style="margin-bottom:16px"></div>
+      <div id="inv-tiles" class="grid metric-grid-4" style="margin-bottom:16px"></div>
       <div id="inv-body"></div>
     </div>
 
@@ -1201,9 +1201,9 @@ function renderInvestments(){
     + tile("Cash", fmt(cash), "uninvested inside these accounts");
   }
   function tile(label, big, sub, color){
-    return '<article class="metric-card"><div class="micro-label">'+esc(label.toUpperCase())+'</div>'
-      + '<div class="metric-value mono"'+(color?' style="color:'+color+'"':'')+'>'+esc(big)+'</div>'
-      + '<div class="metric-sub small muted">'+esc(sub)+'</div></article>';
+    return '<article class="metric-card"><div class="metric-label">'+esc(label)+'</div>'
+      + '<div class="metric-value"'+(color?' style="color:'+color+'"':'')+'>'+esc(big)+'</div>'
+      + '<div class="metric-sub">'+esc(sub)+'</div></article>';
   }
 
   /* Grouped by the wall first, then by account, same as everywhere else. */
