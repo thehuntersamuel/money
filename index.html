@@ -385,6 +385,19 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 
     <!-- Transactions tab -->
     <div data-pane="investments" style="display:none">
+      <section class="card" style="margin-bottom:16px">
+        <div class="card-body" style="padding:18px 20px 6px">
+          <div class="micro-label">PORTFOLIO VALUE</div>
+          <div id="inv-hero" class="mono" style="font-size:38px;line-height:1.1;letter-spacing:-0.02em;margin:2px 0 4px">—</div>
+          <div id="inv-delta" class="small" style="min-height:18px"></div>
+        </div>
+        <div class="chart" style="padding:0 8px 8px">
+          <svg id="inv-chart" viewBox="0 0 720 210"></svg>
+          <div class="tooltip" id="inv-tip" style="display:none"></div>
+        </div>
+        <div id="inv-range" role="group" aria-label="Time range"
+             style="display:flex;gap:6px;flex-wrap:wrap;padding:0 20px 16px"></div>
+      </section>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <span class="small muted" id="inv-count" style="margin-left:auto"></span>
       </div>
@@ -512,7 +525,8 @@ async function loadAll(){
     q("v_holdings", {order:{col:"institution_value",asc:false}}),
     q("v_daily_flow", {order:{col:"day",asc:true}}),
     q("v_daily_bucket", {order:{col:"day",asc:true}}),
-    q("v_daily_merchant", {order:{col:"day",asc:true}})
+    q("v_daily_merchant", {order:{col:"day",asc:true}}),
+    q("v_investment_history", {order:{col:"day",asc:true}})
   ]);
   D.wall=res[0]; D.hist=res[1]; D.cashflow=res[2]; D.spend=res[3]; D.health=res[4];
   D.goals=res[5]; D.debt=res[6]; D.attention=res[7]; D.accounts=res[8]; D.tx=res[9];
@@ -523,6 +537,7 @@ async function loadAll(){
   D.dflow = res[15] || [];
   D.dbucket = res[16] || [];
   D.dmerch = res[17] || [];
+  D.invhist = res[18] || [];
   D.allAccounts = D.accounts;
   D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
@@ -1308,8 +1323,102 @@ function renderRules(){
 
 $("hide-internal").onchange=function(){ renderTx(); };
 
+/* ---------- portfolio value over time ---------- */
+/* The Robinhood shape: one big number, the change across the selected window,
+   and a line coloured by the direction of that change. */
+function renderInvChart(){
+  var svg=$("inv-chart"), hero=$("inv-hero"), delta=$("inv-delta");
+  if(!svg) return;
+  renderInvRange();
+
+  var rows=(D.invhist||[]).filter(function(r){
+    return (D.mode==="all"||r.entity_slug===D.mode) && inRange(r.day);
+  });
+  var days=[], seen={};
+  rows.forEach(function(r){ if(!seen[r.day]){seen[r.day]=1; days.push(r.day);} });
+  days.sort();
+  function val(d){ return rows.filter(function(r){return r.day===d;})
+                     .reduce(function(s,r){return s+Number(r.value||0);},0); }
+  var vals=days.map(val);
+
+  /* Today's live number comes from the accounts themselves, so the hero is
+     right even before a single day of history exists. */
+  var live=(D.accounts||[]).filter(function(a){
+    return a.type==="investment" && (D.mode==="all"||a.entity_slug===D.mode);
+  }).reduce(function(s,a){ return s+Number(a.current_balance||0); },0);
+  hero.textContent = fmt2(live);
+
+  if(days.length<2){
+    delta.innerHTML='<span class="muted">Tracking started '
+      + (days.length ? esc(shortDate(days[0])) : 'today')
+      + '. The line fills in one point per day, per sync.</span>';
+    svg.innerHTML='<text class="axis-label" x="360" y="105" text-anchor="middle">'
+      +'Not enough history yet to draw a line.</text>';
+    return;
+  }
+
+  var first=vals[0], last=vals[vals.length-1];
+  var chg=last-first, pct=first!==0 ? (chg/Math.abs(first)*100) : null;
+  var up = chg>=0;
+  var c = up ? col("--good") : col("--danger");
+  delta.innerHTML='<span class="mono" style="color:'+c+';font-weight:600">'
+    + (up?'+':'') + fmt2(chg)
+    + (pct===null?'':' ('+(up?'+':'')+pct.toFixed(2)+'%)')
+    + '</span> <span class="muted">'+esc(rangeBounds().label)+'</span>';
+
+  var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
+  if(lo===hi){ lo-=1; hi+=1; }
+  var pad=(hi-lo)*0.15; lo-=pad; hi+=pad;
+  var W=720,H=210,p={top:14,right:12,bottom:22,left:8};
+  var pw=W-p.left-p.right, ph=H-p.top-p.bottom;
+  function X(i){ return p.left+(i/(days.length-1))*pw; }
+  function Y(v){ return p.top+ph-((v-lo)/(hi-lo))*ph; }
+
+  var s="";
+  /* the opening value as a baseline, the way Robinhood shows the period start */
+  s+='<line x1="'+p.left+'" x2="'+(W-p.right)+'" y1="'+Y(first)+'" y2="'+Y(first)+'" '
+   + 'stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4"></line>';
+
+  var area=days.map(function(d,i){ return X(i)+","+Y(vals[i]); }).join(" ");
+  s+='<defs><linearGradient id="invgrad" x1="0" x2="0" y1="0" y2="1">'
+   + '<stop offset="0%" stop-color="'+c+'" stop-opacity="0.22"></stop>'
+   + '<stop offset="100%" stop-color="'+c+'" stop-opacity="0"></stop></linearGradient></defs>';
+  s+='<polygon fill="url(#invgrad)" points="'+p.left+','+(p.top+ph)+' '+area+' '+(W-p.right)+','+(p.top+ph)+'"></polygon>';
+  s+='<polyline fill="none" stroke="'+c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="'+area+'"></polyline>';
+  if(days.length<=40) days.forEach(function(d,i){
+    s+='<circle cx="'+X(i)+'" cy="'+Y(vals[i])+'" r="3" fill="'+c+'" stroke="var(--surface-1)" stroke-width="2"></circle>';
+  });
+  days.forEach(function(d,i){
+    var w=pw/days.length;
+    s+='<rect x="'+(X(i)-w/2)+'" y="'+p.top+'" width="'+w+'" height="'+ph+'" fill="transparent" '
+     + 'data-tx="'+X(i)+'" data-ty="'+Y(vals[i])+'" data-tl="'+esc(shortDate(d))+'" data-tv="'+esc(fmt2(vals[i]))+'"></rect>';
+  });
+  s+='<text class="axis-label" x="'+p.left+'" y="'+(H-5)+'">'+shortDate(days[0])+'</text>'
+   + '<text class="axis-label" x="'+(W-p.right)+'" y="'+(H-5)+'" text-anchor="end">'+shortDate(days[days.length-1])+'</text>';
+  svg.innerHTML=s;
+  wireTip(svg, $("inv-tip"), c);
+}
+function renderInvRange(){
+  var el=$("inv-range"); if(!el) return;
+  if(!D.range) D.range="90d";
+  var h="";
+  RANGES.forEach(function(r){
+    var on=D.range===r.key;
+    h+='<button data-invrange="'+r.key+'" aria-pressed="'+on+'" '
+     + 'style="padding:5px 11px;border-radius:7px;font-size:12.5px;cursor:pointer;'
+     + 'border:1px solid '+(on?'var(--text-secondary)':'var(--border)')+';'
+     + 'background:'+(on?'var(--surface-2)':'transparent')+';'
+     + 'color:'+(on?'var(--text-primary)':'var(--text-secondary)')+'">'+r.label+'</button>';
+  });
+  el.innerHTML=h;
+  Array.prototype.forEach.call(el.querySelectorAll("[data-invrange]"), function(b){
+    b.onclick=function(){ D.range=b.getAttribute("data-invrange"); renderInvestments(); };
+  });
+}
+
 /* ---------- render: investments ---------- */
 function renderInvestments(){
+  renderInvChart();
   var hs = D.holdings || [];
   var box = $("inv-body"), tiles = $("inv-tiles"), cnt = $("inv-count");
   if(!box) return;
