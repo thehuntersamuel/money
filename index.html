@@ -484,11 +484,13 @@ async function loadAll(){
     q("v_accounts_manage", {order:{col:"entity_slug",asc:true}}),
     q("v_tx", {order:{col:"posted_on",asc:false}, limit:200}),
     q("buckets", {order:{col:"sort_order",asc:true}}),
-    sb.from("plaid_items").select("id, institution_name, status, last_synced_at, entity_id, granted_products").then(function(r){ return r.data||[]; })
+    sb.from("plaid_items").select("id, institution_name, status, last_synced_at, entity_id, granted_products").then(function(r){ return r.data||[]; }),
+    sb.from("excluded_accounts").select("*").order("excluded_at",{ascending:false}).then(function(r){ return r.data||[]; })
   ]);
   D.wall=res[0]; D.hist=res[1]; D.cashflow=res[2]; D.spend=res[3]; D.health=res[4];
   D.goals=res[5]; D.debt=res[6]; D.attention=res[7]; D.accounts=res[8]; D.tx=res[9];
   D.buckets=res[10]; D.items=res[11];
+  D.excluded = res[12] || [];
   D.allAccounts = D.accounts;
   D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
@@ -805,7 +807,8 @@ function renderAccounts(){
           +  '</select></td>'
           +  '<td style="white-space:nowrap">'
           +  '<button class="btn" style="padding:4px 10px;font-size:12.5px" data-rn="'+a.id+'">Rename</button> '
-          +  '<button class="btn" style="padding:4px 10px;font-size:12.5px" data-hide="'+a.id+'" data-to="'+(a.is_hidden?'0':'1')+'">'+(a.is_hidden?'Unhide':'Remove')+'</button>'
+          +  '<button class="btn" style="padding:4px 10px;font-size:12.5px" data-hide="'+a.id+'" data-to="'+(a.is_hidden?'0':'1')+'">'+(a.is_hidden?'Unhide':'Hide')+'</button> '
+          +  '<button class="btn" style="padding:4px 10px;font-size:12.5px;color:var(--danger)" data-del="'+a.id+'">Remove</button>'
           +  '</td></tr>';
       });
       h += '</tbody></table></div>';
@@ -813,10 +816,35 @@ function renderAccounts(){
     h += '</section></div>';
   });
 
+  var ex = D.excluded || [];
+  if(ex.length){
+    h += '<div style="margin-bottom:16px"><section class="card">'
+      +  '<header class="card-head"><h2 class="card-title">Removed</h2>'
+      +  '<div class="card-sub">'+ex.length+' account'+(ex.length===1?'':'s')+' kept out of Money Hub</div></header>'
+      +  '<div class="table-wrap"><table><thead><tr><th>Account</th><th>Institution</th><th>Removed</th><th></th></tr></thead><tbody>';
+    ex.forEach(function(x){
+      h += '<tr><td>'+esc(x.name||'—')+(x.mask?' <span class="muted small">··'+esc(x.mask)+'</span>':'')+'</td>'
+        +  '<td class="small muted">'+esc(x.institution_name||'—')+'</td>'
+        +  '<td class="small muted">'+ago(x.excluded_at)+'</td>'
+        +  '<td><button class="btn" style="padding:4px 10px;font-size:12.5px" data-restore="'+esc(x.plaid_account_id)+'">Restore</button></td></tr>';
+    });
+    h += '</tbody></table></div></section></div>';
+  }
+
   $("accounts-body").innerHTML = h
-    + '<p class="small muted">Changing an account’s entity pins it, so the next sync will not drag it back. '
-    + 'Remove hides an account from every total and chart — it is never deleted, and Plaid keeps syncing it, '
-    + 'so you can unhide it any time with <em>show hidden</em>.</p>';
+    + '<p class="small muted"><strong>Hide</strong> keeps an account connected but takes it out of every total, chart and '
+    + 'the transactions list — bring it back with <em>show hidden</em>. '
+    + '<strong>Remove</strong> deletes the account and its transactions and blocks it from returning on future syncs; '
+    + 'use it for an account that is not yours. Changing an account’s entity pins it, so a sync will not drag it back.</p>';
+
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-restore]"), function(b){
+    b.onclick=async function(){
+      b.disabled=true;
+      await sb.from("excluded_accounts").delete().eq("plaid_account_id", b.getAttribute("data-restore"));
+      await refresh();
+      alert("Restored. Hit Sync on the Connect tab to pull it back in.");
+    };
+  });
 
   function markSel(){
     var n = Object.keys(D.acctSel).filter(function(k){return D.acctSel[k];}).length;
@@ -858,6 +886,29 @@ function renderAccounts(){
   });
   Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-rename]"), function(b){
     b.onclick=function(){ doRename(b.getAttribute("data-rename")); };
+  });
+  /* remove for good */
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-del]"), function(b){
+    b.onclick=async function(){
+      var id=b.getAttribute("data-del");
+      var a=all.filter(function(x){return x.id===id;})[0]; if(!a) return;
+      var label=(a.display_name||a.name)+(a.mask?" \u00b7\u00b7"+a.mask:"");
+      if(!window.confirm(
+        "Remove "+label+" for good?\n\n"
+        +"This deletes the account and all of its transactions from Money Hub, and stops it "
+        +"coming back on future syncs. Use this for an account that is not yours \u2014 a partner\u2019s "
+        +"card riding along on a shared login.\n\n"
+        +"You can restore it later from the Removed list at the bottom of this tab.")) return;
+      b.disabled=true;
+      var ins=await sb.from("excluded_accounts").insert({
+        plaid_account_id:a.plaid_account_id, institution_name:a.institution_name,
+        name:a.name, mask:a.mask
+      });
+      if(ins.error && String(ins.error.code)!=="23505"){ alert("Could not remove: "+ins.error.message); b.disabled=false; return; }
+      var del=await sb.from("accounts").delete().eq("id", id);
+      if(del.error){ alert("Could not remove: "+del.error.message); b.disabled=false; return; }
+      await refresh();
+    };
   });
   /* hide / unhide */
   Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-hide]"), function(b){
