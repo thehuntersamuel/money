@@ -385,7 +385,14 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
         <span class="small muted" id="tx-count" style="margin-left:auto"></span>
       </div>
       <section class="card"><div id="tx-body"></div></section>
-      <p class="small muted" style="margin-top:12px">Changing a dropdown here pins that row by hand. Rules never overwrite manual picks.</p>
+      <p class="small muted" style="margin-top:12px">Changing a dropdown here pins that row by hand. Rules never overwrite manual picks.
+      Hit <strong>Always</strong> on a row to turn that one fix into a standing rule for the merchant.</p>
+
+      <section class="card" style="margin-top:18px">
+        <header class="card-head"><h2 class="card-title">Rules</h2>
+          <div class="card-sub">Merchants filed automatically, every sync</div></header>
+        <div id="rules-body"></div>
+      </section>
     </div>
 
     <!-- Connect tab -->
@@ -485,12 +492,14 @@ async function loadAll(){
     q("v_tx", {order:{col:"posted_on",asc:false}, limit:200}),
     q("buckets", {order:{col:"sort_order",asc:true}}),
     sb.from("plaid_items").select("id, institution_name, status, last_synced_at, entity_id, granted_products").then(function(r){ return r.data||[]; }),
-    sb.from("excluded_accounts").select("*").order("excluded_at",{ascending:false}).then(function(r){ return r.data||[]; })
+    sb.from("excluded_accounts").select("*").order("excluded_at",{ascending:false}).then(function(r){ return r.data||[]; }),
+    sb.from("classification_rules").select("*").order("priority",{ascending:true}).then(function(r){ return r.data||[]; })
   ]);
   D.wall=res[0]; D.hist=res[1]; D.cashflow=res[2]; D.spend=res[3]; D.health=res[4];
   D.goals=res[5]; D.debt=res[6]; D.attention=res[7]; D.accounts=res[8]; D.tx=res[9];
   D.buckets=res[10]; D.items=res[11];
   D.excluded = res[12] || [];
+  D.rules = res[13] || [];
   D.allAccounts = D.accounts;
   D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
@@ -955,19 +964,23 @@ function renderTx(){
   if(!rows.length){ $("tx-body").innerHTML='<div class="empty">Nothing here. Sync a connection first.</div>'; return; }
   var bucketOpts='<option value="">— unbucketed —</option>'+D.buckets.map(function(b){
     return '<option value="'+esc(b.slug)+'">'+esc(b.label)+'</option>'; }).join("");
-  var h='<div class="table-wrap"><table style="min-width:820px"><thead><tr><th>Date</th><th>Description</th><th>Account</th><th class="num">Amount</th><th>Entity</th><th>Bucket</th></tr></thead><tbody>';
+  var h='<div class="table-wrap"><table style="min-width:900px"><thead><tr><th>Date</th><th>Description</th><th>Account</th><th class="num">Amount</th><th>Entity</th><th>Bucket</th><th></th></tr></thead><tbody>';
   rows.forEach(function(t){
     var entOpts=D.entities.map(function(e){
       return '<option value="'+e.entity_id+'"'+(e.entity_id===t.entity_id?' selected':'')+'>'+esc(e.entity_name)+'</option>'; }).join("");
+    var ruled = ruleFor(t);
     h+='<tr><td class="small muted mono">'+shortDate(t.posted_on)+'</td>'
      +'<td>'+esc(t.merchant_name||t.name)
      +(t.is_pending?' <span class="pill">pending</span>':'')
-     +(t.is_internal?' <span class="pill">transfer</span>':'')+'</td>'
+     +(t.is_internal?' <span class="pill">transfer</span>':'')
+     +(ruled?' <span class="pill" title="matched by rule: '+esc(ruled.label)+'">rule</span>':'')+'</td>'
      +'<td class="small muted">'+esc(t.account_name)+(t.account_mask?' ··'+esc(t.account_mask):'')+'</td>'
      +'<td class="num mono'+(Number(t.raw_amount)>0?'':' pos')+'">'
      +(Number(t.raw_amount)>0?fmt2(Number(t.raw_amount)):'+'+fmt2(-Number(t.raw_amount)))+'</td>'
      +'<td><select data-txent="'+t.id+'" style="font-size:12.5px;padding:3px 6px;border-radius:6px;border:1px solid '+t.entity_color+';background:var(--surface-2);color:var(--text-primary);font-weight:'+(t.entity_source==="manual"?600:400)+'">'+entOpts+'</select></td>'
-     +'<td><select data-txbkt="'+t.id+'" style="font-size:12.5px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-primary);font-weight:'+(t.bucket_source==="manual"?600:400)+'">'+bucketOpts+'</select></td></tr>';
+     +'<td><select data-txbkt="'+t.id+'" style="font-size:12.5px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-primary);font-weight:'+(t.bucket_source==="manual"?600:400)+'">'+bucketOpts+'</select></td>'
+     +'<td><button class="btn" data-always="'+t.id+'" style="padding:3px 9px;font-size:12px" title="Remember this merchant and apply it to every past and future charge">Always</button></td>'
+     +'</tr>';
   });
   $("tx-body").innerHTML=h+'</tbody></table></div>';
   Array.prototype.forEach.call($("tx-body").querySelectorAll("[data-txbkt]"), function(sel){
@@ -984,7 +997,108 @@ function renderTx(){
       await refresh();
     };
   });
+  Array.prototype.forEach.call($("tx-body").querySelectorAll("[data-always]"), function(b){
+    b.onclick=function(){ makeRule(rows.find(function(x){return x.id===b.getAttribute("data-always");})); };
+  });
+  renderRules();
 }
+
+/* Which enabled rule (if any) already matches this transaction. */
+function ruleFor(t){
+  var rs=(D.rules||[]).filter(function(r){ return r.is_enabled; });
+  for(var i=0;i<rs.length;i++){
+    var r=rs[i];
+    var v = r.match_field==="merchant_name" ? (t.merchant_name||"")
+          : r.match_field==="pfc_primary"   ? (t.pfc_primary||"")
+          : r.match_field==="pfc_detailed"  ? (t.pfc_detailed||"")
+          : (t.name||"");
+    if(!v) continue;
+    var hit=false;
+    if(r.match_op==="equals") hit = v.toLowerCase()===String(r.match_value).toLowerCase();
+    else if(r.match_op==="ilike") hit = v.toLowerCase().indexOf(String(r.match_value).replace(/%/g,"").toLowerCase())>=0;
+    else { try{ hit=new RegExp(r.match_value,"i").test(v); }catch(e){ hit=false; } }
+    if(hit && (r.set_entity_id || r.set_bucket)) return r;
+  }
+  return null;
+}
+
+/* Turn "this one transaction" into "every charge from this merchant, forever". */
+async function makeRule(t){
+  if(!t) return;
+  var merchant = (t.merchant_name||t.name||"").trim();
+  if(!merchant){ alert("This transaction has no merchant name to match on."); return; }
+  var field = t.merchant_name ? "merchant_name" : "name";
+  var needle = window.prompt(
+    "Always file charges matching this text the same way.\n\n"
+    +"Matching is case-insensitive and matches anywhere in the "
+    +(field==="merchant_name"?"merchant name":"description")+".\n"
+    +"Keep it short and distinctive.",
+    merchant);
+  if(needle===null) return;
+  needle = needle.trim();
+  if(!needle) return;
+
+  var ent = D.entities.find(function(e){ return e.entity_id===t.entity_id; });
+  var bkt = t.bucket_slug ? D.buckets.find(function(b){ return b.slug===t.bucket_slug; }) : null;
+  if(!window.confirm(
+     'Create this rule?\n\n'
+     +'Any transaction whose '+(field==="merchant_name"?"merchant":"description")+' contains "'+needle+'"\n'
+     +'  → '+(ent?ent.entity_name:"(entity unchanged)")+'\n'
+     +'  → '+(bkt?bkt.label:"(bucket unchanged)")+'\n\n'
+     +'This applies to every past and future charge. Anything you set by hand stays as you set it.')) return;
+
+  var r = await sb.from("classification_rules").insert({
+    label: needle,
+    match_field: field,
+    match_op: "ilike",
+    match_value: "%"+needle+"%",
+    set_entity_id: t.entity_id || null,
+    set_bucket: t.bucket_slug || null,
+    priority: 50,
+    is_enabled: true
+  });
+  if(r.error){ alert("Could not save the rule: "+r.error.message); return; }
+  try{ await fnCall("classify-run",{}); }catch(e){}
+  await refresh();
+}
+
+/* Rules list, under the transactions table. */
+function renderRules(){
+  var box=$("rules-body"); if(!box) return;
+  var rs=D.rules||[];
+  if(!rs.length){ box.innerHTML='<div class="empty">No rules yet. Fix a transaction, then hit <strong>Always</strong> on its row to make it stick for that merchant.</div>'; return; }
+  var h='<div class="table-wrap"><table><thead><tr><th>When it matches</th><th>Field</th><th>Entity</th><th>Bucket</th><th>On</th><th></th></tr></thead><tbody>';
+  rs.forEach(function(r){
+    var ent=D.entities.find(function(e){return e.entity_id===r.set_entity_id;});
+    var bkt=D.buckets.find(function(b){return b.slug===r.set_bucket;});
+    h+='<tr'+(r.is_enabled?'':' style="opacity:.45"')+'>'
+     +'<td>'+esc(r.label||r.match_value)+'<div class="small muted mono">'+esc(r.match_value)+'</div></td>'
+     +'<td class="small muted">'+esc(r.match_field)+'</td>'
+     +'<td class="small">'+(ent?'<span class="pill entity"><i class="dot" style="background:'+ent.entity_color+'"></i>'+esc(ent.entity_name)+'</span>':'<span class="muted">—</span>')+'</td>'
+     +'<td class="small muted">'+(bkt?esc(bkt.label):'—')+'</td>'
+     +'<td><input type="checkbox" data-ruleon="'+r.id+'"'+(r.is_enabled?' checked':'')+'></td>'
+     +'<td><button class="btn" data-ruledel="'+r.id+'" style="padding:3px 9px;font-size:12px;color:var(--danger)">Delete</button></td></tr>';
+  });
+  box.innerHTML=h+'</tbody></table></div>'
+    +'<p class="small muted">Rules fill in the entity and bucket automatically as new transactions arrive. '
+    +'Anything you set by hand on a single transaction always wins over a rule.</p>';
+  Array.prototype.forEach.call(box.querySelectorAll("[data-ruleon]"), function(cb){
+    cb.onchange=async function(){
+      await sb.from("classification_rules").update({is_enabled:cb.checked}).eq("id",cb.getAttribute("data-ruleon"));
+      try{ await fnCall("classify-run",{}); }catch(e){}
+      await refresh();
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll("[data-ruledel]"), function(b){
+    b.onclick=async function(){
+      if(!window.confirm("Delete this rule? Transactions it already filed keep their current entity and bucket.")) return;
+      b.disabled=true;
+      await sb.from("classification_rules").delete().eq("id",b.getAttribute("data-ruledel"));
+      await refresh();
+    };
+  });
+}
+
 $("hide-internal").onchange=function(){ renderTx(); };
 
 /* ---------- render: connect ---------- */
