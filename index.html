@@ -55,6 +55,12 @@
   --business-soft: rgba(21,163,92,.10);
   --business-border: rgba(21,163,92,.42);
 
+  /* Money-out bars sit beside money-in in the same chart, so this one is
+     pinned rather than taken from the active entity accent. On the business
+     side the accent IS the brand green, and green-on-green made the two
+     series indistinguishable. Validated against --good: deutan dE 16.8. */
+  --flow-out: #4b7fb5;
+
   --success: #15a35c;
   --warning: #e3b341;
   --danger: #ef4444;
@@ -111,7 +117,7 @@ a { color: inherit; }
   color: var(--text); white-space: nowrap;
 }
 .brand-mark { width: 24px; height: 24px; display: block; flex: none; }
-.brand span { color: var(--text-muted); font-weight: 500; }
+.brand .brand-word > span { color: var(--text-muted); font-weight: 500; }
 .nav { display: flex; gap: 2px; margin-left: auto; }
 .nav a {
   text-decoration: none; padding: 6px 12px; border-radius: var(--radius-sm);
@@ -802,7 +808,7 @@ function renderFlow(){
   cols.forEach(function(c){ max=Math.max(max,c.inflow,c.outflow); });
   max*=1.06;
   var gw=pw/cols.length, bw=Math.max((gw-6)/2-1,2);
-  var IN=col("--good"), OUT=accent();
+  var IN=col("--good"), OUT=col("--flow-out");
   if($("flow-out-dot")) $("flow-out-dot").style.background=OUT;
   var s="";
   [0,max/2,max].forEach(function(t){
