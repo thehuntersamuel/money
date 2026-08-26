@@ -316,16 +316,33 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 .field.num input { text-align: right; font-family: var(--font-number); font-variant-numeric: tabular-nums; }
 .field.up input { text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
 
-/* Thirteen controls now. An explicit column list would need re-tuning every
-   time a field is added and would overflow a 352px phone; auto-fill reflows
-   instead. At 352px the content box is 320px, which fits two 118px columns
-   with room to spare, so the page never scrolls sideways. */
-.ticket {
+/* Thirteen controls in two bands rather than one long wrap.
+   A single auto-fill grid reflowed the fields into whatever order the width
+   allowed and stranded Stop alone on its own row at desktop size. These are two
+   deliberate rows instead: the order on top, the discipline underneath, each
+   with its own column count. It also happens to read better, because those are
+   two different questions.
+   At 352px both bands drop to two columns and the content box is 320px, so the
+   page still never scrolls sideways. */
+.ticket-row {
   display: grid; gap: 10px 12px; align-items: end;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
 }
-.ticket .place { grid-column: 1 / -1; }
-.ticket .place .btn { width: 100%; padding: 9px 20px; }
+.ticket-order { grid-template-columns: 1.2fr .85fr 1fr .7fr .9fr .9fr .9fr; }
+.ticket-risk  { grid-template-columns: 1.15fr .8fr .8fr .8fr 1fr 1.05fr; margin-top: 12px; }
+.ticket-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+.ticket-actions .btn { min-width: 170px; padding: 9px 22px; }
+/* Seven fields divide evenly into neither two nor three columns, so once the
+   band wraps something is always left alone on the last row. Symbol takes the
+   full width instead: it is the field that benefits most from room, and the
+   remaining six then split cleanly either way. */
+@media (max-width: 1080px) {
+  .ticket-order, .ticket-risk { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ticket-order > .field:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 620px) {
+  .ticket-order, .ticket-risk { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ticket-actions .btn { width: 100%; }
+}
 /* Four reasoning boxes: two up on a desktop, stacked on a phone. */
 .reasons { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
 .gate-note {
@@ -500,12 +517,18 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
           <div class="card-sub" id="paper-cap"></div>
         </header>
         <div style="padding:14px 16px 0">
-          <div class="ticket">
+          <div class="ticket-row ticket-order">
             <label class="field up"><span>Symbol</span><input id="tk-sym" placeholder="NVDA" autocomplete="off"></label>
             <label class="field"><span>Side</span>
               <select id="tk-dir"><option value="long">Long</option><option value="short">Short</option></select></label>
             <label class="field"><span>Horizon</span>
               <select id="tk-hz"><option value="short">Short term</option><option value="long">Long term</option></select></label>
+            <label class="field num"><span>Qty</span><input id="tk-qty" type="number" step="any" min="0" placeholder="10"></label>
+            <label class="field num"><span>Entry</span><input id="tk-entry" type="number" step="any" min="0" placeholder="live"></label>
+            <label class="field num"><span>Target</span><input id="tk-target" type="number" step="any" min="0" placeholder="—"></label>
+            <label class="field num"><span>Stop</span><input id="tk-stop" type="number" step="any" min="0" placeholder="—"></label>
+          </div>
+          <div class="ticket-row ticket-risk">
             <label class="field"><span>Setup</span>
               <select id="tk-setup"><option value="core">Core position</option><option value="swing">Swing trade</option><option value="catalyst">Catalyst trade</option><option value="hedge">Hedge</option></select></label>
             <label class="field num"><span>Confidence</span><input id="tk-confidence" type="number" step="1" min="1" max="100" placeholder="70"></label>
@@ -513,12 +536,8 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
             <label class="field num"><span>Downside %</span><input id="tk-downside" type="number" step="any" min="0" placeholder="8"></label>
             <label class="field num"><span>Max book risk %</span><input id="tk-risk-pct" type="number" step="0.1" min="0.1" max="2" placeholder="1"></label>
             <label class="field"><span>Review date</span><input id="tk-review-date" type="date"></label>
-            <label class="field num"><span>Qty</span><input id="tk-qty" type="number" step="any" min="0" placeholder="10"></label>
-            <label class="field num"><span>Entry</span><input id="tk-entry" type="number" step="any" min="0" placeholder="live"></label>
-            <label class="field num"><span>Target</span><input id="tk-target" type="number" step="any" min="0" placeholder="—"></label>
-            <label class="field num"><span>Stop</span><input id="tk-stop" type="number" step="any" min="0" placeholder="—"></label>
-            <div class="place"><button class="btn primary" id="tk-place">Place</button></div>
           </div>
+          <div class="ticket-actions"><button class="btn primary" id="tk-place">Place</button></div>
         </div>
         <div class="form-note">
           <div class="reasons">
