@@ -1902,14 +1902,35 @@ function renderInvestments(){
 
   if(cnt) cnt.textContent = hs.length+" position"+(hs.length===1?"":"s");
 
+  /* The tiles used to read "Total value / Invested / Cash" for everything at
+     once, which let a locked Roth and an idle cash sweep add up to one
+     confident-looking portfolio number. They are split by role now: retirement
+     money cannot be spent without penalty, so it never shares a tile with money
+     that can. */
+  function roleOf(h){ return h.capital_role || "taxable"; }
+  var retire = hs.filter(function(h){ return roleOf(h)==="retirement"; });
+  var taxbl  = hs.filter(function(h){ return roleOf(h)!=="retirement"; });
+  function sumV(a){ return a.reduce(function(n,x){ return n+Number(x.institution_value||0); },0); }
+  var retireVal = sumV(retire);
+  var taxCash   = sumV(taxbl.filter(isCash));
+  var taxInv    = sumV(taxbl.filter(function(x){ return !isCash(x); }));
+
   if(tiles){
     tiles.innerHTML =
-      tile("Total value", fmt(value), "everything in brokerage + retirement")
-    + tile("Invested", fmt(mkt), basis>0?("cost basis "+fmt(basis)):"—")
+      tile("Retirement", fmt(retireVal),
+           retire.length ? "locked in "+acctNames(retire) : "no retirement accounts")
+    + tile("Taxable positions", fmt(taxInv),
+           taxInv>0 ? "outside retirement" : "nothing invested outside the Roth")
+    + tile("Uninvested cash", fmt(taxCash), "sitting in "+(acctNames(taxbl.filter(isCash))||"brokerage"),
+           taxCash>0 ? "var(--warning)" : null)
     + tile("Unrealized", (gain>=0?"+":"")+fmt(gain),
            gpct===null?"no cost basis reported":((gain>=0?"+":"")+gpct.toFixed(2)+"%"),
-           gain>=0?"var(--success)":"var(--danger)")
-    + tile("Cash", fmt(cash), "uninvested inside these accounts");
+           gain>=0?"var(--success)":"var(--danger)");
+  }
+  function acctNames(list){
+    var seen=[];
+    list.forEach(function(x){ if(seen.indexOf(x.account_name)<0) seen.push(x.account_name); });
+    return seen.join(", ");
   }
   function tile(label, big, sub, color){
     return '<article class="metric-card"><div class="metric-label">'+esc(label)+'</div>'
@@ -1917,22 +1938,35 @@ function renderInvestments(){
       + '<div class="metric-sub">'+esc(sub)+'</div></article>';
   }
 
-  /* Grouped by the wall first, then by account, same as everywhere else. */
+  /* Grouped by capital_role first, then by account.
+     Retirement and taxable are two different kinds of money that happen to
+     live at the same broker, and lumping them made $3.3k of locked Roth and
+     $17.8k of idle cash read as one $21k portfolio. The taxable side leads
+     because it is the half Hunter can actually act on. */
+  var ROLES = [
+    { key:"taxable",    label:"Taxable",    note:"available to deploy",        color:"var(--personal)" },
+    { key:"retirement", label:"Retirement", note:"locked, penalty to withdraw", color:"var(--text-muted)" }
+  ];
   var h="";
-  D.entities.forEach(function(e){
-    var mine = hs.filter(function(x){ return x.entity_id===e.entity_id; });
+  ROLES.forEach(function(role){
+    var mine = hs.filter(function(x){ return roleOf(x)===role.key; });
     if(!mine.length) return;
-    var eVal = mine.reduce(function(n,x){ return n+Number(x.institution_value||0); },0);
-    h += '<div style="margin-bottom:16px"><section class="card"><div class="stripe" style="background:'+e.entity_color+'"></div>'
-      +  '<header class="card-head"><h2 class="card-title">'+esc(e.entity_name)+'</h2>'
-      +  '<div class="card-sub">'+fmt(eVal)+' across '+mine.length+' position'+(mine.length===1?'':'s')+'</div></header>';
+    var rVal  = sumV(mine);
+    var rCash = sumV(mine.filter(isCash));
+    var rInv  = rVal - rCash;
+    h += '<div style="margin-bottom:16px"><section class="card">'
+      +  '<div class="stripe" style="background:'+role.color+'"></div>'
+      +  '<header class="card-head"><h2 class="card-title">'+esc(role.label)+'</h2>'
+      +  '<div class="card-sub">'+fmt(rVal)+' · '+esc(role.note)
+      +  (rCash>0 ? ' · <span style="color:var(--warning)">'+fmt(rCash)+' uninvested</span>' : '')
+      +  '</div></header>';
 
     var accts=[];
     mine.forEach(function(x){ if(accts.indexOf(x.account_name)<0) accts.push(x.account_name); });
     accts.forEach(function(an){
       var rows = mine.filter(function(x){ return x.account_name===an; })
                      .sort(function(a,b){ return Number(b.institution_value||0)-Number(a.institution_value||0); });
-      var aVal = rows.reduce(function(n,x){ return n+Number(x.institution_value||0); },0);
+      var aVal = sumV(rows);
       var first = rows[0];
       h += '<div style="padding:12px 16px 4px"><div style="display:flex;justify-content:space-between;align-items:baseline">'
         +  '<span class="micro-label">'+esc(String(an).toUpperCase())+(first.account_mask?' ··'+esc(first.account_mask):'')+'</span>'
@@ -1944,7 +1978,7 @@ function renderInvestments(){
         var g = x.cost_basis!=null ? Number(x.gain_abs||0) : null;
         var pct = x.gain_pct;
         h += '<tr><td>'+(isCash(x)
-               ? '<span class="muted">Cash</span>'
+               ? '<span class="muted">Cash</span> <span class="small muted">uninvested</span>'
                : '<strong>'+esc(x.ticker||'—')+'</strong><div class="small muted">'+esc(trim(x.security_name))+'</div>')+'</td>'
           +  '<td class="num mono small">'+(isCash(x)?'—':esc(qty(x.quantity)))+'</td>'
           +  '<td class="num mono small">'+(isCash(x)||x.institution_price==null?'—':fmt2(Number(x.institution_price)))+'</td>'
@@ -1958,8 +1992,9 @@ function renderInvestments(){
     });
     h += '</section></div>';
   });
-  box.innerHTML = h + '<p class="small muted">Prices come from your broker at the last sync, not a live market feed. '
-    + 'Cash held inside a brokerage is listed as a position but kept out of the gain calculation.</p>';
+  box.innerHTML = h + '<p class="small muted">Prices come from your broker at the last sync. '
+    + 'Cash held inside a brokerage is listed as a position but kept out of the gain calculation. '
+    + 'Retirement money is shown separately because it cannot be deployed without penalty, and it is excluded from deployable capital.</p>';
 
   function trim(n){ n=String(n||""); return n.length>58 ? n.slice(0,55)+"…" : n; }
   function qty(q){
