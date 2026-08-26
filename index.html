@@ -2229,23 +2229,32 @@ function renderTrade(){
   var tiles=$("paper-tiles");
   if(tiles){
     var eq = Number(acct.equity||0), ret = acct.return_pct;
+    var dep = Number(acct.pct_deployed||0);
     tiles.innerHTML =
       paperTile("Paper equity", fmt2(eq),
-        "started at "+fmt(Number(acct.starting_cash||0)))
+        acct.tracks_real_capital
+          ? "stake tracks your real "+fmt(Number(acct.starting_cash||0))
+          : "started at "+fmt(Number(acct.starting_cash||0)))
     + paperTile("Open P&L", signed(acct.unrealized_pnl||0),
         (acct.n_open||0)+" open position"+(Number(acct.n_open)===1?"":"s"),
         pnlColor(acct.unrealized_pnl||0))
     + paperTile("Realized", signed(acct.realized_pnl||0),
         (acct.n_closed||0)+" closed", pnlColor(acct.realized_pnl||0))
     + paperTile("Buying power", fmt2(Number(acct.buying_power||0)),
-        ret==null?"—":((Number(ret)>=0?"+":"")+Number(ret).toFixed(2)+"% since start"));
+        (acct.n_open ? dep.toFixed(0)+"% of the stake committed"
+                     : (ret==null?"nothing committed":((Number(ret)>=0?"+":"")+Number(ret).toFixed(2)+"% since start"))),
+        /* Amber past two thirds. Sizing is the thing paper trading is
+           actually for, so the tile has to say something before the loss does. */
+        dep >= 67 ? "var(--warning)" : null);
   }
 
   var capEl=$("paper-cap");
   if(capEl){
     capEl.innerHTML = cap.deployable==null ? "" :
-      ('Sized against '+fmt(Number(cap.deployable))+' of real deployable capital. '
-       + '<span class="muted">Retirement is excluded; this is a simulation and places no orders.</span>');
+      (fmt(Number(acct.robinhood_cash||0))+' Robinhood cash + '+fmt(Number(acct.bank_cash||0))+' bank'
+       + ' &minus; '+fmt(Number(acct.reserve_target||0))+' reserve &minus; cards = <strong>'
+       + fmt(Number(cap.deployable))+'</strong> deployable. '
+       + '<span class="muted">Roth excluded. Simulation only, no orders are placed.</span>');
   }
 
   /* ---- open positions ----
@@ -2585,6 +2594,17 @@ function wireTrade(){
       entry=Number(qt.price);
     }
     if(!isFinite(entry)||entry<=0){ msg.textContent="Entry has to be positive."; return; }
+    /* The point of tying the stake to real capital is that the sim refuses
+       what the bank would refuse. Without this the board happily lets him
+       practise $50k positions on $11.8k and learn nothing about sizing. */
+    var acct = (D.paper||[])[0] || {};
+    var cost = qty * entry, bp = Number(acct.buying_power||0);
+    if(acct.buying_power != null && cost > bp){
+      msg.innerHTML = '<span style="color:var(--danger)">'+esc(fmt2(cost))
+        + ' is more than your '+esc(fmt2(bp))+' of buying power.</span>'
+        + ' <span class="muted">That is real deployable capital, not a made-up stake.</span>';
+      return;
+    }
     place.disabled=true; msg.textContent="Placing…";
     if(!qt){ await sb.from("watchlist").insert({ symbol: sym });
              try{ await fnCall("quotes-refresh",{symbols:[sym]}); }catch(e){} }
