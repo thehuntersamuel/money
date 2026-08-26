@@ -330,7 +330,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
     <nav class="nav" id="nav" style="display:none">
       <a href="#overview" data-tab="overview" data-active="true">Overview</a>
       <a href="#accounts" data-tab="accounts">Accounts</a>
-      <a href="#investments" data-tab="investments">Investments</a><a href="#assets" data-tab="assets">Assets</a><a href="#transactions" data-tab="transactions">Transactions</a>
+      <a href="#investments" data-tab="investments">Investments</a><a href="#trade" data-tab="trade">Trade</a><a href="#assets" data-tab="assets">Assets</a><a href="#transactions" data-tab="transactions">Transactions</a>
       <a href="#connect" data-tab="connect">Connect</a>
     </nav>
     <a id="signout" class="text-button" style="cursor:pointer;display:none">Sign out</a>
@@ -424,6 +424,52 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
     <div data-pane="accounts" style="display:none"><div id="accounts-body"></div></div>
 
     <!-- Assets tab: things owned outright. No bank feed behind any of it. -->
+    <div data-pane="trade" style="display:none">
+      <div class="grid metric-grid-4" style="margin-bottom:12px" id="paper-tiles"></div>
+      <section class="card" style="margin-bottom:16px">
+        <header class="card-head">
+          <h2 class="card-title">Place a paper trade</h2>
+          <div class="card-sub" id="paper-cap"></div>
+        </header>
+        <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Symbol
+            <input id="tk-sym" placeholder="NVDA" style="width:110px;text-transform:uppercase"></label>
+          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Side
+            <select id="tk-dir" style="width:90px"><option value="long">Long</option><option value="short">Short</option></select></label>
+          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Horizon
+            <select id="tk-hz" style="width:110px"><option value="short">Short term</option><option value="long">Long term</option></select></label>
+          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Qty
+            <input id="tk-qty" type="number" step="any" min="0" placeholder="10" style="width:90px"></label>
+          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Entry
+            <input id="tk-entry" type="number" step="any" min="0" placeholder="live" style="width:110px"></label>
+          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Target
+            <input id="tk-target" type="number" step="any" min="0" placeholder="optional" style="width:110px"></label>
+          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Stop
+            <input id="tk-stop" type="number" step="any" min="0" placeholder="optional" style="width:110px"></label>
+          <button class="btn primary" id="tk-place">Place</button>
+          <span class="small muted" id="tk-msg" style="margin-left:4px"></span>
+        </div>
+        <div style="padding:0 16px 14px">
+          <input id="tk-thesis" placeholder="Why this trade? (your call, in your words)" style="width:100%">
+        </div>
+      </section>
+      <div id="paper-open" style="margin-bottom:16px"></div>
+      <section class="card" style="margin-bottom:16px">
+        <header class="card-head">
+          <h2 class="card-title">Market board</h2>
+          <div class="card-sub" id="board-sub"></div>
+        </header>
+        <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <input id="board-filter" placeholder="Filter symbol or name" style="width:220px">
+          <input id="board-add" placeholder="Add ticker" style="width:130px;text-transform:uppercase">
+          <button class="btn" id="board-add-btn">Add</button>
+          <button class="btn" id="board-refresh">Refresh quotes</button>
+          <span class="small muted" id="board-msg"></span>
+        </div>
+        <div id="board-body"></div>
+      </section>
+      <div id="paper-closed"></div>
+    </div>
     <div data-pane="assets" style="display:none"><div id="owned-body"></div></div>
 
     <!-- Transactions tab -->
@@ -593,6 +639,11 @@ async function loadAll(){
     wall:      function(){ return q("v_net_worth_by_entity", {order:{col:"sort_order",asc:true}}); },
     hist:      function(){ return q("v_net_worth_history", {order:{col:"captured_on",asc:true}}); },
     cashhist:  function(){ return q("v_cash_history", {order:{col:"day",asc:true}}); },
+    quotes:    function(){ return q("quotes", {order:{col:"symbol",asc:true}}); },
+    watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
+    trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
+    paper:     function(){ return q("v_paper_account"); },
+    capital:   function(){ return q("v_deployable_capital"); },
     cashflow:  function(){ return q("v_monthly_cashflow"); },
     spend:     function(){ return q("v_monthly_spend"); },
     health:    function(){ return q("v_health_spend"); },
@@ -1033,6 +1084,7 @@ function renderOverview(){
   renderPersonalOnly();
   renderOwned(); renderEntities(); renderBuckets(); renderRecurring(); renderFlags();
   renderSpend(); renderMerchants(); renderHealth(); renderDebt(); renderAttention();
+  renderTrade();
 }
 
 /* ---------- account type groups ---------- */
@@ -2006,6 +2058,283 @@ function renderInvestments(){
   }
 }
 
+/* ---------- render: trade (paper) ----------
+   A paper floor, not an advice engine. Every trade on this tab starts with
+   Hunter typing a symbol and a thesis; nothing here ranks, scores or suggests
+   anything to buy. The board is market data, the blotter is his record, and
+   the scorecard exists to answer the only question that matters -- whether the
+   calls he acts on do better or worse than the ones he only writes down. */
+function paperTile(label, big, sub, color){
+  return '<article class="metric-card"><div class="metric-label">'+esc(label)+'</div>'
+    + '<div class="metric-value"'+(color?' style="color:'+color+'"':'')+'>'+esc(big)+'</div>'
+    + '<div class="metric-sub">'+esc(sub)+'</div></article>';
+}
+function pnlColor(n){ return Number(n)>=0 ? "var(--success)" : "var(--danger)"; }
+function signed(n){ return (Number(n)>=0?"+":"")+fmt2(Math.abs(Number(n))===0?0:Number(n)); }
+
+function renderTrade(){
+  var acct = (D.paper||[])[0] || {};
+  var cap  = (D.capital||[])[0] || {};
+  var trades = D.trades || [];
+  var open   = trades.filter(function(t){ return t.status==="open"; });
+  var closed = trades.filter(function(t){ return t.status==="closed"; });
+
+  var tiles=$("paper-tiles");
+  if(tiles){
+    var eq = Number(acct.equity||0), ret = acct.return_pct;
+    tiles.innerHTML =
+      paperTile("Paper equity", fmt2(eq),
+        "started at "+fmt(Number(acct.starting_cash||0)))
+    + paperTile("Open P&L", signed(acct.unrealized_pnl||0),
+        (acct.n_open||0)+" open position"+(Number(acct.n_open)===1?"":"s"),
+        pnlColor(acct.unrealized_pnl||0))
+    + paperTile("Realized", signed(acct.realized_pnl||0),
+        (acct.n_closed||0)+" closed", pnlColor(acct.realized_pnl||0))
+    + paperTile("Buying power", fmt2(Number(acct.buying_power||0)),
+        ret==null?"—":((Number(ret)>=0?"+":"")+Number(ret).toFixed(2)+"% since start"));
+  }
+
+  var capEl=$("paper-cap");
+  if(capEl){
+    capEl.innerHTML = cap.deployable==null ? "" :
+      ('Sized against '+fmt(Number(cap.deployable))+' of real deployable capital. '
+       + '<span class="muted">Retirement is excluded; this is a simulation and places no orders.</span>');
+  }
+
+  /* ---- open positions ---- */
+  var ob=$("paper-open");
+  if(ob){
+    if(!open.length){
+      ob.innerHTML='<section class="card"><div class="empty">No open paper trades. '
+        + 'Place one above, or hit Trade on any row of the board.</div></section>';
+    } else {
+      var h='<section class="card"><header class="card-head"><h2 class="card-title">Open positions</h2>'
+        + '<div class="card-sub">'+open.length+' open · '+signed(acct.unrealized_pnl||0)+'</div></header>'
+        + '<div class="table-wrap"><table><thead><tr>'
+        + '<th>Position</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th>'
+        + '<th class="num">P&amp;L</th><th class="num">Days</th><th>Flags</th><th></th></tr></thead><tbody>';
+      open.forEach(function(t){
+        var flags='';
+        if(t.stop_breached) flags += '<span class="pill" style="color:var(--danger);border-color:var(--danger)">stop hit</span> ';
+        if(t.target_hit)    flags += '<span class="pill" style="color:var(--success);border-color:var(--success)">target hit</span> ';
+        if(t.is_real)       flags += '<span class="pill">REAL</span> ';
+        h += '<tr><td><strong>'+esc(t.symbol)+'</strong> '
+          +  '<span class="small muted">'+esc(t.direction==="short"?"short":"long")+' · '+esc(t.horizon)+' term</span>'
+          +  (t.thesis?'<div class="small muted">'+esc(t.thesis)+'</div>':'')+'</td>'
+          +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
+          +  '<td class="num mono small">'+fmt2(Number(t.entry_price))+'</td>'
+          +  '<td class="num mono small">'+(t.last_price==null?'<span class="muted">—</span>':fmt2(Number(t.last_price)))+'</td>'
+          +  '<td class="num mono" style="color:'+pnlColor(t.pnl||0)+'">'+signed(t.pnl||0)
+          +  (t.pnl_pct==null?'':' <span class="small" style="opacity:.7">'+(Number(t.pnl_pct)>=0?"+":"")+Number(t.pnl_pct).toFixed(1)+'%</span>')+'</td>'
+          +  '<td class="num mono small muted">'+esc(String(t.days_held))+'</td>'
+          +  '<td>'+flags+'</td>'
+          +  '<td class="num"><button class="btn" data-close="'+esc(t.id)+'">Close</button> '
+          +  '<button class="btn" data-real="'+esc(t.id)+'" data-realnow="'+(t.is_real?"1":"0")+'">'
+          +  (t.is_real?"Mark paper":"I took this")+'</button></td></tr>';
+      });
+      ob.innerHTML = h+'</tbody></table></div></section>';
+      Array.prototype.forEach.call(ob.querySelectorAll("[data-close]"), function(b){
+        b.onclick=async function(){
+          var id=b.getAttribute("data-close");
+          var t=open.filter(function(x){return x.id===id;})[0];
+          var px=prompt("Close "+t.symbol+" at what price?", t.last_price!=null?String(t.last_price):"");
+          if(px===null) return;
+          var n=Number(px); if(!isFinite(n)||n<=0){ alert("Need a positive price."); return; }
+          b.disabled=true;
+          var r=await sb.from("trades").update({
+            status:"closed", exit_price:n, closed_on:new Date().toISOString().slice(0,10),
+            updated_at:new Date().toISOString() }).eq("id", id);
+          if(r.error) alert(r.error.message);
+          await refresh();
+        };
+      });
+      Array.prototype.forEach.call(ob.querySelectorAll("[data-real]"), function(b){
+        b.onclick=async function(){
+          var id=b.getAttribute("data-real"), now=b.getAttribute("data-realnow")==="1";
+          b.disabled=true;
+          var r=await sb.from("trades").update({ is_real: !now, updated_at:new Date().toISOString() }).eq("id", id);
+          if(r.error) alert(r.error.message);
+          await refresh();
+        };
+      });
+    }
+  }
+
+  /* ---- market board ---- */
+  var qs = (D.quotes||[]).slice();
+  var filt = ($("board-filter") && $("board-filter").value || "").trim().toUpperCase();
+  if(filt) qs = qs.filter(function(x){
+    return String(x.symbol||"").indexOf(filt)>=0
+        || String(x.name||"").toUpperCase().indexOf(filt)>=0; });
+  qs.sort(function(a,b){ return String(a.symbol).localeCompare(String(b.symbol)); });
+
+  var newest = (D.quotes||[]).reduce(function(m,x){
+    return (!m || (x.fetched_at||"") > m) ? (x.fetched_at||m) : m; }, null);
+  var stale = (D.quotes||[]).filter(function(x){ return x.error; }).length;
+  var sub=$("board-sub");
+  if(sub) sub.innerHTML = (D.quotes||[]).length+' symbols'
+    + (newest ? ' · quoted '+esc(new Date(newest).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})) : '')
+    + (stale ? ' · <span style="color:var(--warning)">'+stale+' stale</span>' : '');
+
+  var bb=$("board-body");
+  if(bb){
+    if(!qs.length){
+      bb.innerHTML='<div class="empty">No symbols. Add one above, then hit Refresh quotes.</div>';
+    } else {
+      var bh='<div class="table-wrap"><table><thead><tr>'
+        + '<th>Symbol</th><th class="num">Last</th><th class="num">Day</th>'
+        + '<th class="num">52w low</th><th class="num">52w high</th><th></th></tr></thead><tbody>';
+      qs.forEach(function(x){
+        var dc = x.day_change_pct;
+        bh += '<tr><td><strong>'+esc(x.symbol)+'</strong>'
+          +  (x.name?'<div class="small muted">'+esc(String(x.name).slice(0,44))+'</div>':'')
+          +  (x.error?'<div class="small" style="color:var(--warning)">stale: '+esc(x.error)+'</div>':'')+'</td>'
+          +  '<td class="num mono">'+(x.price==null?'—':fmt2(Number(x.price)))+'</td>'
+          +  '<td class="num mono small"'+(dc==null?'':' style="color:'+pnlColor(dc)+'"')+'>'
+          +  (dc==null?'—':((Number(dc)>=0?"+":"")+Number(dc).toFixed(2)+"%"))+'</td>'
+          +  '<td class="num mono small muted">'+(x.fifty_two_low==null?'—':fmt2(Number(x.fifty_two_low)))+'</td>'
+          +  '<td class="num mono small muted">'+(x.fifty_two_high==null?'—':fmt2(Number(x.fifty_two_high)))+'</td>'
+          +  '<td class="num"><button class="btn" data-trade="'+esc(x.symbol)+'">Trade</button> '
+          +  '<button class="btn" data-drop="'+esc(x.symbol)+'">&times;</button></td></tr>';
+      });
+      bb.innerHTML = bh+'</tbody></table></div>';
+      Array.prototype.forEach.call(bb.querySelectorAll("[data-trade]"), function(b){
+        b.onclick=function(){
+          var sym=b.getAttribute("data-trade");
+          var qt=(D.quotes||[]).filter(function(x){return x.symbol===sym;})[0];
+          $("tk-sym").value=sym;
+          if(qt && qt.price!=null) $("tk-entry").value=qt.price;
+          $("tk-qty").focus();
+          window.scrollTo({top:0,behavior:"smooth"});
+        };
+      });
+      Array.prototype.forEach.call(bb.querySelectorAll("[data-drop]"), function(b){
+        b.onclick=async function(){
+          var sym=b.getAttribute("data-drop");
+          if(!confirm("Remove "+sym+" from the board?")) return;
+          b.disabled=true;
+          await sb.from("watchlist").delete().eq("symbol", sym);
+          await sb.from("quotes").delete().eq("symbol", sym);
+          await refresh();
+        };
+      });
+    }
+  }
+
+  /* ---- closed trades + scorecard ---- */
+  var cb=$("paper-closed");
+  if(cb){
+    if(!closed.length){
+      cb.innerHTML="";
+    } else {
+      var books={};
+      closed.forEach(function(t){
+        var k=(t.is_real?"Real":"Paper")+" · "+t.horizon+" term";
+        if(!books[k]) books[k]={n:0,w:0,pnl:0};
+        books[k].n++; if(Number(t.pnl)>0) books[k].w++; books[k].pnl+=Number(t.pnl||0);
+      });
+      var ch='<section class="card" style="margin-bottom:16px">'
+        + '<header class="card-head"><h2 class="card-title">Scorecard</h2>'
+        + '<div class="card-sub">Paper and real kept apart on purpose</div></header>'
+        + '<div class="table-wrap"><table><thead><tr><th>Book</th><th class="num">Trades</th>'
+        + '<th class="num">Win rate</th><th class="num">P&amp;L</th></tr></thead><tbody>';
+      Object.keys(books).sort().forEach(function(k){
+        var b=books[k];
+        ch += '<tr><td>'+esc(k)+'</td><td class="num mono small">'+b.n+'</td>'
+          +  '<td class="num mono small">'+Math.round(b.w/b.n*100)+'%</td>'
+          +  '<td class="num mono" style="color:'+pnlColor(b.pnl)+'">'+signed(b.pnl)+'</td></tr>';
+      });
+      ch += '</tbody></table></div></section>';
+
+      ch += '<section class="card"><header class="card-head"><h2 class="card-title">Closed</h2>'
+        + '<div class="card-sub">'+closed.length+' trade'+(closed.length===1?'':'s')+'</div></header>'
+        + '<div class="table-wrap"><table><thead><tr><th>Position</th><th class="num">Qty</th>'
+        + '<th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th>'
+        + '<th class="num">Held</th><th>Book</th></tr></thead><tbody>';
+      closed.forEach(function(t){
+        ch += '<tr><td><strong>'+esc(t.symbol)+'</strong> <span class="small muted">'
+          +  esc(t.direction)+'</span>'+(t.thesis?'<div class="small muted">'+esc(t.thesis)+'</div>':'')+'</td>'
+          +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
+          +  '<td class="num mono small">'+fmt2(Number(t.entry_price))+'</td>'
+          +  '<td class="num mono small">'+fmt2(Number(t.exit_price))+'</td>'
+          +  '<td class="num mono" style="color:'+pnlColor(t.pnl||0)+'">'+signed(t.pnl||0)+'</td>'
+          +  '<td class="num mono small muted">'+esc(String(t.days_held))+'d</td>'
+          +  '<td>'+(t.is_real?'<span class="pill">REAL</span>':'<span class="small muted">paper</span>')+'</td></tr>';
+      });
+      cb.innerHTML = ch+'</tbody></table></div></section>';
+    }
+  }
+}
+
+/* Wired once at boot; renderTrade only paints. */
+function wireTrade(){
+  var f=$("board-filter"); if(f) f.oninput=function(){ renderTrade(); };
+  var add=$("board-add-btn");
+  if(add) add.onclick=async function(){
+    var box=$("board-add"), sym=(box.value||"").trim().toUpperCase();
+    if(!sym) return;
+    add.disabled=true; $("board-msg").textContent="Adding "+sym+"…";
+    var r=await sb.from("watchlist").insert({ symbol: sym });
+    if(r.error && String(r.error.message).indexOf("duplicate")<0){
+      $("board-msg").textContent=r.error.message; add.disabled=false; return;
+    }
+    try{
+      var res=await fnCall("quotes-refresh", { symbols:[sym] });
+      if(res.failed && res.failed.length){
+        /* An unknown ticker should not silently sit on the board with no price. */
+        await sb.from("watchlist").delete().eq("symbol", sym);
+        await sb.from("quotes").delete().eq("symbol", sym);
+        $("board-msg").textContent = sym+" is not a symbol the feed knows.";
+        add.disabled=false; return;
+      }
+    }catch(e){ $("board-msg").textContent=e.message; add.disabled=false; return; }
+    box.value=""; $("board-msg").textContent="";
+    await refresh();
+  };
+  var rf=$("board-refresh");
+  if(rf) rf.onclick=async function(){
+    rf.disabled=true; var was=rf.textContent; rf.textContent="Refreshing…";
+    try{
+      var res=await fnCall("quotes-refresh", {});
+      $("board-msg").textContent = res.refreshed+" quoted"
+        + (res.failed && res.failed.length ? ", "+res.failed.length+" failed" : "");
+    }catch(e){ $("board-msg").textContent=e.message; }
+    rf.textContent=was; rf.disabled=false;
+    await refresh();
+  };
+  var place=$("tk-place");
+  if(place) place.onclick=async function(){
+    var msg=$("tk-msg"); msg.textContent="";
+    var sym=($("tk-sym").value||"").trim().toUpperCase();
+    var qty=Number($("tk-qty").value);
+    var entry=$("tk-entry").value===""?null:Number($("tk-entry").value);
+    var target=$("tk-target").value===""?null:Number($("tk-target").value);
+    var stop=$("tk-stop").value===""?null:Number($("tk-stop").value);
+    var thesis=($("tk-thesis").value||"").trim();
+    if(!sym){ msg.textContent="Symbol?"; return; }
+    if(!isFinite(qty)||qty<=0){ msg.textContent="Quantity has to be positive."; return; }
+    var qt=(D.quotes||[]).filter(function(x){return x.symbol===sym;})[0];
+    if(entry===null){
+      if(!qt||qt.price==null){ msg.textContent="No live price for "+sym+". Add it to the board first, or type an entry."; return; }
+      entry=Number(qt.price);
+    }
+    if(!isFinite(entry)||entry<=0){ msg.textContent="Entry has to be positive."; return; }
+    place.disabled=true; msg.textContent="Placing…";
+    if(!qt){ await sb.from("watchlist").insert({ symbol: sym });
+             try{ await fnCall("quotes-refresh",{symbols:[sym]}); }catch(e){} }
+    var r=await sb.from("trades").insert({
+      symbol:sym, direction:$("tk-dir").value, horizon:$("tk-hz").value,
+      qty:qty, entry_price:entry, target_price:target, stop_price:stop,
+      thesis: thesis || null
+    });
+    place.disabled=false;
+    if(r.error){ msg.textContent=r.error.message; return; }
+    ["tk-qty","tk-entry","tk-target","tk-stop","tk-thesis"].forEach(function(id){ $(id).value=""; });
+    msg.textContent="";
+    await refresh();
+  };
+}
+
 /* ---------- render: connect ---------- */
 var linkEntity="personal";
 function linkMsg(kind,t){ $("link-msg").innerHTML=t?'<div class="banner '+kind+'" style="margin:12px 0 0">'+esc(t)+'</div>':""; }
@@ -2129,8 +2458,11 @@ async function boot(){
   $("app").style.display="";
   $("nav").style.display=""; $("signout").style.display="";
   await refresh();
+  wireTrade();
   var h=location.hash.replace("#","")||"overview";
-  if(["overview","accounts","transactions","connect"].indexOf(h)>=0) showTab(h);
+  /* Was a hardcoded list of four tab names, so a deep link to any tab added
+     later silently fell through. knownTabs() reads the panes that exist. */
+  if(knownTabs().indexOf(h)>=0) showTab(h);
   var params=new URLSearchParams(location.search);
   if(params.get("oauth_state_id")){
     var tok=sessionStorage.getItem("mh.link_token"), slug=sessionStorage.getItem("mh.link_entity")||"personal";
