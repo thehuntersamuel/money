@@ -411,12 +411,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
         </section>
       </div>
 
-      <div class="grid cols-2" id="row-goal">
-        <section class="card" id="card-goal">
-          <div class="stripe" style="background:var(--personal)"></div>
-          <header class="card-head"><h2 class="card-title">Relocation fund (FL / TX)</h2><div class="card-sub" id="goal-sub"></div></header>
-          <div id="goal-body"></div>
-        </section>
+      <div class="grid">
         <section class="card">
           <header class="card-head"><h2 class="card-title">Debt board</h2><div class="card-sub" id="debt-sub"></div></header>
           <div id="debt-body"></div>
@@ -588,39 +583,41 @@ async function q(view, opts){
 }
 
 async function loadAll(){
-  var res = await Promise.all([
-    q("v_net_worth_by_entity", {order:{col:"sort_order",asc:true}}),
-    q("v_net_worth_history", {order:{col:"captured_on",asc:true}}),
-    q("v_monthly_cashflow"),
-    q("v_monthly_spend"),
-    q("v_health_spend"),
-    q("v_goal_progress"),
-    q("v_debt"),
-    q("v_attention"),
-    q("v_accounts_manage", {order:{col:"entity_slug",asc:true}}),
-    q("v_tx", {order:{col:"posted_on",asc:false}, limit:200}),
-    q("buckets", {order:{col:"sort_order",asc:true}}),
-    sb.from("plaid_items").select("id, institution_name, status, last_synced_at, entity_id, granted_products").then(function(r){ return r.data||[]; }),
-    sb.from("excluded_accounts").select("*").order("excluded_at",{ascending:false}).then(function(r){ return r.data||[]; }),
-    sb.from("classification_rules").select("*").order("priority",{ascending:true}).then(function(r){ return r.data||[]; }),
-    q("v_holdings", {order:{col:"institution_value",asc:false}}),
-    q("v_daily_flow", {order:{col:"day",asc:true}}),
-    q("v_daily_bucket", {order:{col:"day",asc:true}}),
-    q("v_daily_merchant", {order:{col:"day",asc:true}}),
-    q("v_investment_history", {order:{col:"day",asc:true}}),
-    q("v_manual_assets", {order:{col:"value",asc:false}})
-  ]);
-  D.wall=res[0]; D.hist=res[1]; D.cashflow=res[2]; D.spend=res[3]; D.health=res[4];
-  D.goals=res[5]; D.debt=res[6]; D.attention=res[7]; D.accounts=res[8]; D.tx=res[9];
-  D.buckets=res[10]; D.items=res[11];
-  D.excluded = res[12] || [];
-  D.rules = res[13] || [];
-  D.holdings = res[14] || [];
-  D.dflow = res[15] || [];
-  D.dbucket = res[16] || [];
-  D.dmerch = res[17] || [];
-  D.invhist = res[18] || [];
-  D.owned = res[19] || [];
+  /* Keyed, not positional. This used to be a Promise.all over an array read
+     back as res[0]..res[19], so deleting one query silently shifted every
+     later one onto the wrong field. Adding or removing a source is now a
+     single line and nothing else can drift. */
+  var sources = {
+    wall:      function(){ return q("v_net_worth_by_entity", {order:{col:"sort_order",asc:true}}); },
+    hist:      function(){ return q("v_net_worth_history", {order:{col:"captured_on",asc:true}}); },
+    cashflow:  function(){ return q("v_monthly_cashflow"); },
+    spend:     function(){ return q("v_monthly_spend"); },
+    health:    function(){ return q("v_health_spend"); },
+    debt:      function(){ return q("v_debt"); },
+    attention: function(){ return q("v_attention"); },
+    accounts:  function(){ return q("v_accounts_manage", {order:{col:"entity_slug",asc:true}}); },
+    tx:        function(){ return q("v_tx", {order:{col:"posted_on",asc:false}, limit:200}); },
+    buckets:   function(){ return q("buckets", {order:{col:"sort_order",asc:true}}); },
+    holdings:  function(){ return q("v_holdings", {order:{col:"institution_value",asc:false}}); },
+    dflow:     function(){ return q("v_daily_flow", {order:{col:"day",asc:true}}); },
+    dbucket:   function(){ return q("v_daily_bucket", {order:{col:"day",asc:true}}); },
+    dmerch:    function(){ return q("v_daily_merchant", {order:{col:"day",asc:true}}); },
+    invhist:   function(){ return q("v_investment_history", {order:{col:"day",asc:true}}); },
+    owned:     function(){ return q("v_manual_assets", {order:{col:"value",asc:false}}); },
+    items:     function(){ return sb.from("plaid_items")
+                  .select("id, institution_name, status, last_synced_at, entity_id, granted_products")
+                  .then(function(r){ return r.data||[]; }); },
+    excluded:  function(){ return sb.from("excluded_accounts").select("*")
+                  .order("excluded_at",{ascending:false})
+                  .then(function(r){ return r.data||[]; }); },
+    rules:     function(){ return sb.from("classification_rules").select("*")
+                  .order("priority",{ascending:true})
+                  .then(function(r){ return r.data||[]; }); }
+  };
+  var keys = Object.keys(sources);
+  var out  = await Promise.all(keys.map(function(k){ return sources[k](); }));
+  keys.forEach(function(k,i){ D[k] = out[i] || []; });
+
   D.allAccounts = D.accounts;
   D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
@@ -939,10 +936,8 @@ function barList(el, rows, color){
    because that view deliberately spans both sides of the wall. */
 function renderPersonalOnly(){
   var show = D.mode !== "ecom-pros-llc";
-  var h=$("card-health"), g=$("card-goal"), row=$("row-goal");
+  var h=$("card-health");
   if(h) h.style.display = show ? "" : "none";
-  if(g) g.style.display = show ? "" : "none";
-  if(row) row.style.gridTemplateColumns = show ? "" : "minmax(0, 1fr)";
 }
 
 function renderHealth(){
@@ -963,51 +958,6 @@ function renderHealth(){
   barList($("health-bars"), list, col("--personal"));
 }
 
-function renderGoal(){
-  var g=D.goals.find(function(x){return x.slug==="relocation-fund";});
-  if(!g){ $("goal-body").innerHTML='<div class="empty">No relocation goal set up.</div>'; return; }
-  $("goal-sub").textContent = g.target_date ? "target "+shortDate(g.target_date) : "";
-
-  /* The target used to be settable only in SQL, which is why this panel sat at
-     $0 for weeks. Anything that is Hunter's own number belongs behind a button,
-     not in a migration. */
-  var editBtn = '<button class="btn" id="goal-edit" style="padding:4px 10px;font-size:12.5px">'
-              + (Number(g.target_amount)>0 ? 'Edit goal' : 'Set target') + '</button>';
-
-  if(Number(g.target_amount)===0){
-    $("goal-body").innerHTML='<div class="empty">No target set yet.</div>'
-      + '<div style="padding:0 16px 14px">'+editBtn+'</div>';
-  } else {
-    var pct=Number(g.pct_complete||0);
-    var h='<div style="display:flex;justify-content:space-between;align-items:baseline"><div class="tile-value">'+fmt(Number(g.current_amount))+'</div><div class="muted">of '+fmt(Number(g.target_amount))+'</div></div>'
-     +'<div style="margin:12px 0 8px"><div class="meter"><i style="width:'+Math.min(pct,100)+'%;background:var(--personal)"></i></div></div>'
-     +'<div class="small muted">'+pct.toFixed(0)+'% there · '+fmt(Number(g.remaining))+' to go'
-     +(g.days_left!==null?' · '+g.days_left+' days left':'')
-     +(g.needed_per_month!==null?' · needs '+fmt(Number(g.needed_per_month))+'/mo':'')+'</div>'
-     +'<div style="margin-top:12px">'+editBtn+'</div>';
-    $("goal-body").innerHTML=h;
-  }
-
-  var eb = $("goal-edit");
-  if(eb) eb.onclick = async function(){
-    var label = prompt("Goal name", g.label || "");
-    if(label===null) return;
-    var amt = prompt("Target amount", g.target_amount!=null ? String(Number(g.target_amount)) : "");
-    if(amt===null) return;
-    var n = Number(String(amt).replace(/[^0-9.\-]/g,""));
-    if(!isFinite(n)){ alert("That is not a number."); return; }
-    var date = prompt("Target date (YYYY-MM-DD, blank for none)", g.target_date || "");
-    if(date===null) return;
-    date = date.trim();
-    if(date && !/^\d{4}-\d{2}-\d{2}$/.test(date)){ alert("Use YYYY-MM-DD."); return; }
-    eb.disabled = true;
-    var r = await sb.from("goals")
-      .update({ label:label, target_amount:n, target_date: date || null })
-      .eq("slug","relocation-fund");
-    if(r.error) alert(r.error.message);
-    await refresh();
-  };
-}
 
 
 function renderDebt(){
@@ -1050,7 +1000,7 @@ function renderOverview(){
   renderWall(); renderSeg(); renderTiles(); renderTrend(); renderFlow();
   renderPersonalOnly();
   renderOwned(); renderEntities(); renderBuckets();
-  renderSpend(); renderMerchants(); renderHealth(); renderGoal(); renderDebt(); renderAttention();
+  renderSpend(); renderMerchants(); renderHealth(); renderDebt(); renderAttention();
 }
 
 /* ---------- account type groups ---------- */
