@@ -467,6 +467,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
         <header class="card-head"><h2 class="card-title">Rules</h2>
           <div class="card-sub">Merchants filed automatically, every sync</div></header>
         <div id="rules-body"></div>
+        <div id="buckets-body" style="margin-top:16px"></div>
       </section>
     </div>
 
@@ -486,6 +487,8 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
         <header class="card-head"><h2 class="card-title">Connected institutions</h2></header>
         <div id="items-body"></div>
       </section>
+      <div style="height:14px"></div>
+      <div id="entities-body"></div>
     </div>
   </div>
 </div>
@@ -964,18 +967,48 @@ function renderGoal(){
   var g=D.goals.find(function(x){return x.slug==="relocation-fund";});
   if(!g){ $("goal-body").innerHTML='<div class="empty">No relocation goal set up.</div>'; return; }
   $("goal-sub").textContent = g.target_date ? "target "+shortDate(g.target_date) : "";
+
+  /* The target used to be settable only in SQL, which is why this panel sat at
+     $0 for weeks. Anything that is Hunter's own number belongs behind a button,
+     not in a migration. */
+  var editBtn = '<button class="btn" id="goal-edit" style="padding:4px 10px;font-size:12.5px">'
+              + (Number(g.target_amount)>0 ? 'Edit goal' : 'Set target') + '</button>';
+
   if(Number(g.target_amount)===0){
-    $("goal-body").innerHTML='<div class="empty">Set a target amount and date on this goal, then link the accounts that hold the money. Until then this panel has nothing honest to show.</div>';
-    return;
+    $("goal-body").innerHTML='<div class="empty">No target set yet.</div>'
+      + '<div style="padding:0 16px 14px">'+editBtn+'</div>';
+  } else {
+    var pct=Number(g.pct_complete||0);
+    var h='<div style="display:flex;justify-content:space-between;align-items:baseline"><div class="tile-value">'+fmt(Number(g.current_amount))+'</div><div class="muted">of '+fmt(Number(g.target_amount))+'</div></div>'
+     +'<div style="margin:12px 0 8px"><div class="meter"><i style="width:'+Math.min(pct,100)+'%;background:var(--personal)"></i></div></div>'
+     +'<div class="small muted">'+pct.toFixed(0)+'% there · '+fmt(Number(g.remaining))+' to go'
+     +(g.days_left!==null?' · '+g.days_left+' days left':'')
+     +(g.needed_per_month!==null?' · needs '+fmt(Number(g.needed_per_month))+'/mo':'')+'</div>'
+     +'<div style="margin-top:12px">'+editBtn+'</div>';
+    $("goal-body").innerHTML=h;
   }
-  var pct=Number(g.pct_complete||0);
-  var h='<div style="display:flex;justify-content:space-between;align-items:baseline"><div class="tile-value">'+fmt(Number(g.current_amount))+'</div><div class="muted">of '+fmt(Number(g.target_amount))+'</div></div>'
-   +'<div style="margin:12px 0 8px"><div class="meter"><i style="width:'+Math.min(pct,100)+'%;background:var(--personal)"></i></div></div>'
-   +'<div class="small muted">'+pct.toFixed(0)+'% there · '+fmt(Number(g.remaining))+' to go'
-   +(g.days_left!==null?' · '+g.days_left+' days left':'')
-   +(g.needed_per_month!==null?' · needs '+fmt(Number(g.needed_per_month))+'/mo':'')+'</div>';
-  $("goal-body").innerHTML=h;
+
+  var eb = $("goal-edit");
+  if(eb) eb.onclick = async function(){
+    var label = prompt("Goal name", g.label || "");
+    if(label===null) return;
+    var amt = prompt("Target amount", g.target_amount!=null ? String(Number(g.target_amount)) : "");
+    if(amt===null) return;
+    var n = Number(String(amt).replace(/[^0-9.\-]/g,""));
+    if(!isFinite(n)){ alert("That is not a number."); return; }
+    var date = prompt("Target date (YYYY-MM-DD, blank for none)", g.target_date || "");
+    if(date===null) return;
+    date = date.trim();
+    if(date && !/^\d{4}-\d{2}-\d{2}$/.test(date)){ alert("Use YYYY-MM-DD."); return; }
+    eb.disabled = true;
+    var r = await sb.from("goals")
+      .update({ label:label, target_amount:n, target_date: date || null })
+      .eq("slug","relocation-fund");
+    if(r.error) alert(r.error.message);
+    await refresh();
+  };
 }
+
 
 function renderDebt(){
   var rows=D.debt.filter(function(r){ return D.mode==="all"||r.entity_slug===D.mode; });
@@ -1016,7 +1049,7 @@ function renderOverview(){
   renderRangeRow();
   renderWall(); renderSeg(); renderTiles(); renderTrend(); renderFlow();
   renderPersonalOnly();
-  renderOwned();
+  renderOwned(); renderEntities(); renderBuckets();
   renderSpend(); renderMerchants(); renderHealth(); renderGoal(); renderDebt(); renderAttention();
 }
 
@@ -1042,6 +1075,72 @@ function groupTest(key){
 /* Anything the named groups miss still has to be reachable. */
 function inAnyNamedGroup(a){
   return ACCT_GROUPS.some(function(g){ return g.key!=="all" && g.test(a); });
+}
+
+/* ---------- render: entity + bucket names ---------- */
+/* Entity display names and bucket labels are Hunter's words, but they only
+   existed in seed migrations, so every one of them was read-only in the app he
+   uses every day. Anything that is a label on his own money is editable here. */
+function renderEntities(){
+  var el = $("entities-body"); if(!el) return;
+  var h = '<section class="card"><header class="card-head">'
+        + '<h2 class="card-title">Entities</h2>'
+        + '<div class="card-sub">The two sides of the wall. Renaming is cosmetic and never re-files anything.</div></header>'
+        + '<div class="table-wrap"><table><thead><tr><th>Name</th><th>Kind</th><th>Accounts</th><th></th></tr></thead><tbody>';
+  (D.entities||[]).forEach(function(e){
+    h += '<tr><td><span class="pill entity-'+(e.entity_slug==="personal"?"personal":"business")+'">'
+      +  esc(e.entity_name)+'</span></td>'
+      +  '<td class="small muted">'+esc(e.entity_kind||'')+'</td>'
+      +  '<td class="small muted">'+(e.account_count!=null?e.account_count:'—')+'</td>'
+      +  '<td style="text-align:right"><button class="btn" data-entname="'+e.entity_id+'" '
+      +  'style="padding:4px 10px;font-size:12.5px">Rename</button></td></tr>';
+  });
+  h += '</tbody></table></div></section>';
+  el.innerHTML = h;
+
+  Array.prototype.forEach.call(el.querySelectorAll("[data-entname]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-entname");
+      var cur = (D.entities||[]).filter(function(x){ return x.entity_id===id; })[0] || {};
+      var name = prompt("Display name", cur.entity_name || "");
+      if(name===null || !name.trim()) return;
+      b.disabled = true;
+      var r = await sb.from("entities").update({ display_name:name.trim() }).eq("id", id);
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
+}
+
+function renderBuckets(){
+  var el = $("buckets-body"); if(!el) return;
+  var list = (D.buckets||[]).slice();
+  var h = '<section class="card"><header class="card-head">'
+        + '<h2 class="card-title">Buckets</h2>'
+        + '<div class="card-sub">'+list.length+' categories · rename freely, the slug behind each one never moves</div></header>'
+        + '<div class="table-wrap"><table><thead><tr><th>Label</th><th>Slug</th><th>Group</th><th></th></tr></thead><tbody>';
+  list.forEach(function(b){
+    h += '<tr><td>'+esc(b.label)+'</td>'
+      +  '<td class="small muted mono">'+esc(b.slug)+'</td>'
+      +  '<td class="small muted">'+esc(b.bucket_group||'')+'</td>'
+      +  '<td style="text-align:right"><button class="btn" data-bkt="'+esc(b.slug)+'" '
+      +  'style="padding:4px 10px;font-size:12.5px">Rename</button></td></tr>';
+  });
+  h += '</tbody></table></div></section>';
+  el.innerHTML = h;
+
+  Array.prototype.forEach.call(el.querySelectorAll("[data-bkt]"), function(btn){
+    btn.onclick = async function(){
+      var slug = btn.getAttribute("data-bkt");
+      var cur = (D.buckets||[]).filter(function(x){ return x.slug===slug; })[0] || {};
+      var label = prompt("Label for " + slug, cur.label || "");
+      if(label===null || !label.trim()) return;
+      btn.disabled = true;
+      var r = await sb.from("buckets").update({ label:label.trim() }).eq("slug", slug);
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
 }
 
 /* ---------- render: owned outright ---------- */
@@ -1251,12 +1350,15 @@ function renderAccounts(){
     h += '<div style="margin-bottom:16px"><section class="card">'
       +  '<header class="card-head"><h2 class="card-title">Removed</h2>'
       +  '<div class="card-sub">'+ex.length+' account'+(ex.length===1?'':'s')+' kept out of Pact Finance</div></header>'
-      +  '<div class="table-wrap"><table><thead><tr><th>Account</th><th>Institution</th><th>Removed</th><th></th></tr></thead><tbody>';
+      +  '<div class="table-wrap"><table><thead><tr><th>Account</th><th>Institution</th><th>Why</th><th>Removed</th><th></th></tr></thead><tbody>';
     ex.forEach(function(x){
       h += '<tr><td>'+esc(x.name||'—')+(x.mask?' <span class="muted small">··'+esc(x.mask)+'</span>':'')+'</td>'
         +  '<td class="small muted">'+esc(x.institution_name||'—')+'</td>'
+        +  '<td class="small muted">'+esc(x.note||'—')+'</td>'
         +  '<td class="small muted">'+ago(x.excluded_at)+'</td>'
-        +  '<td><button class="btn" style="padding:4px 10px;font-size:12.5px" data-restore="'+esc(x.plaid_account_id)+'">Restore</button></td></tr>';
+        +  '<td style="text-align:right">'
+        +  '<button class="btn" style="padding:4px 10px;font-size:12.5px" data-exnote="'+esc(x.plaid_account_id)+'">Edit note</button> '
+        +  '<button class="btn" style="padding:4px 10px;font-size:12.5px" data-restore="'+esc(x.plaid_account_id)+'">Restore</button></td></tr>';
     });
     h += '</tbody></table></div></section></div>';
   }
@@ -1266,6 +1368,21 @@ function renderAccounts(){
     + 'the transactions list — bring it back with <em>show hidden</em>. '
     + '<strong>Remove</strong> deletes the account and its transactions and blocks it from returning on future syncs; '
     + 'use it for an account that is not yours. Changing an account’s entity pins it, so a sync will not drag it back.</p>';
+
+  Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-exnote]"), function(b){
+    b.onclick=async function(){
+      var id = b.getAttribute("data-exnote");
+      var cur = (D.excluded||[]).filter(function(x){ return x.plaid_account_id===id; })[0] || {};
+      var note = prompt("Why is this account out?", cur.note || "");
+      if(note===null) return;
+      b.disabled=true;
+      var r = await sb.from("excluded_accounts")
+        .update({ note: note.trim() ? note.trim() : null })
+        .eq("plaid_account_id", id);
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
 
   Array.prototype.forEach.call($("accounts-body").querySelectorAll("[data-restore]"), function(b){
     b.onclick=async function(){
