@@ -1036,21 +1036,25 @@ function inAnyNamedGroup(a){
    stopped and a charge that never will are both worth seeing. */
 function renderRecurring(){
   var el = $("recurring-body"); if(!el) return;
+
+  /* A charge that stopped billing drops off this list rather than sitting in it
+     greyed out. An archive of dead subscriptions is just a list you read past
+     every time. The view still computes it, so a future alert can say "X
+     stopped" without this panel hoarding the row for nine months. */
   var rows = (D.recurring || []).filter(function(r){
-    return D.mode === "all" || r.entity_slug === D.mode;
+    return (D.mode === "all" || r.entity_slug === D.mode) && !r.looks_stopped;
   });
 
-  var live    = rows.filter(function(r){ return !r.looks_stopped; });
-  var review  = rows.filter(function(r){ return r.needs_review && !r.looks_stopped; });
-  var yearly  = live.reduce(function(n,r){ return n + Number(r.annualised||0); }, 0);
+  var review = rows.filter(function(r){ return r.needs_review; });
+  var yearly = rows.reduce(function(n,r){ return n + Number(r.annualised||0); }, 0);
 
   var h = '<section class="card"><header class="card-head">'
         + '<h2 class="card-title">Recurring charges</h2>'
         + '<div class="card-sub">'
         + (rows.length
-            ? fmt(yearly)+'/yr across '+live.length+' active · '
+            ? fmt(yearly)+'/yr across '+rows.length+' active · '
               + (review.length ? review.length+' to review' : 'all reviewed')
-            : 'Nothing repeating yet')
+            : 'Nothing billing on a repeat right now')
         + '</div></header>';
 
   if(!rows.length){
@@ -1060,18 +1064,17 @@ function renderRecurring(){
       +  '<th>Merchant</th><th>Entity</th><th>Months</th>'
       +  '<th style="text-align:right">Typical</th><th style="text-align:right">Per year</th>'
       +  '<th>Last charged</th><th></th></tr></thead><tbody>';
-    rows.forEach(function(r){
-      var stopped = !!r.looks_stopped;
-      var acked   = !!r.is_acked;
-      var hiked   = !!r.price_changed;
-      var key     = encodeURIComponent(r.merchant)+"|"+r.entity_slug;
 
-      var state = stopped ? '<span class="muted">· stopped</span>'
-                : hiked   ? '<span style="color:var(--warning)">· price changed</span>'
-                : acked   ? '<span class="muted">· on purpose</span>'
+    rows.forEach(function(r){
+      var acked = !!r.is_acked;
+      var hiked = !!r.price_changed;
+      var key   = encodeURIComponent(r.merchant)+"|"+r.entity_slug;
+
+      var state = hiked ? '<span style="color:var(--warning)">\u00b7 price changed</span>'
+                : acked ? '<span class="muted">\u00b7 on purpose</span>'
                 : '';
 
-      h += '<tr'+(stopped||(acked&&!hiked)?' style="opacity:.55"':'')+'>'
+      h += '<tr'+(acked && !hiked ? ' style="opacity:.55"' : '')+'>'
         +  '<td>'+esc(r.merchant)
         +  (acked && r.ack_note ? '<div class="small muted">'+esc(r.ack_note)+'</div>' : '')
         +  '</td>'
@@ -1085,11 +1088,10 @@ function renderRecurring(){
         +  '<td class="mono" style="text-align:right">'+fmt(Number(r.annualised))+'</td>'
         +  '<td class="small">'+shortDate(r.last_charged)+' '+state+'</td>'
         +  '<td style="text-align:right">'
-        +  (stopped ? ''
-             : acked && !hiked
-               ? '<button class="btn" data-unack="'+key+'" style="padding:4px 10px;font-size:12.5px">Unmark</button>'
-               : '<button class="btn" data-ack="'+key+'" style="padding:4px 10px;font-size:12.5px">'
-                 + (hiked ? 'Approve new price' : 'On purpose') + '</button>')
+        +  (acked && !hiked
+             ? '<button class="btn" data-unack="'+key+'" style="padding:4px 10px;font-size:12.5px">Unmark</button>'
+             : '<button class="btn" data-ack="'+key+'" style="padding:4px 10px;font-size:12.5px">'
+               + (hiked ? 'Approve new price' : 'On purpose') + '</button>')
         +  '</td></tr>';
     });
     h += '</tbody></table></div>';
@@ -1111,8 +1113,8 @@ function renderRecurring(){
                         row.ack_note || "");
       if(note===null) return;
       b.disabled = true;
-      /* The amount is stored with the approval on purpose: this approves the
-         charge Hunter just looked at, not whatever it becomes later. */
+      /* Store the amount with the approval: this approves the charge just seen,
+         not whatever it becomes. eFax went $15 to $50 unnoticed for a year. */
       var r = await sb.from("recurring_ack").upsert({
         merchant: k.merchant, entity_slug: k.entity,
         acked_amount: Number(row.typical_amount || 0),
