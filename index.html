@@ -107,7 +107,12 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 a { color: inherit; }
-.shell { max-width: 1240px; margin: 0 auto; padding: 14px 16px 64px; }
+/* 1240px was leaving ~330px of dead gutter on either side of a 1920 screen,
+   which on the Rules and Transactions tables reads as wasted room rather
+   than deliberate margin. Fill the width, with the side padding growing
+   on wider displays so the edge never feels cramped. */
+.shell { width: 100%; max-width: 1800px; margin: 0 auto;
+         padding: 14px clamp(16px, 2vw, 44px) 64px; }
 
 /* ---- top bar ---- */
 .topbar { display: flex; align-items: center; gap: 20px; padding: 6px 0 16px; }
