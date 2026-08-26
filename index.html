@@ -617,6 +617,7 @@ async function loadAll(){
   D.dbucket = res[16] || [];
   D.dmerch = res[17] || [];
   D.invhist = res[18] || [];
+  D.owned = res[19] || [];
   D.allAccounts = D.accounts;
   D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
