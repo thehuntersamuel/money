@@ -459,7 +459,13 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
           <h2 class="card-title">Market board</h2>
           <div class="card-sub" id="board-sub"></div>
         </header>
-        <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <div style="padding:10px 16px 0;display:flex;align-items:center;gap:10px">
+          <label class="small muted" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="board-live" checked> Live
+          </label>
+          <span class="small" id="board-age"></span>
+        </div>
+        <div style="padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
           <input id="board-filter" placeholder="Filter symbol or name" style="width:220px">
           <input id="board-add" placeholder="Add ticker" style="width:130px;text-transform:uppercase">
           <button class="btn" id="board-add-btn">Add</button>
@@ -2175,6 +2181,7 @@ function renderTrade(){
   if(sub) sub.innerHTML = (D.quotes||[]).length+' symbols'
     + (newest ? ' · quoted '+esc(new Date(newest).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})) : '')
     + (stale ? ' · <span style="color:var(--warning)">'+stale+' stale</span>' : '');
+  if(typeof paintAge === "function") paintAge();
 
   var bb=$("board-body");
   if(bb){
@@ -2266,9 +2273,115 @@ function renderTrade(){
   }
 }
 
+/* ---------- live quotes ----------
+   The board was a cache that only moved when someone pressed Refresh, so "live
+   prices" meant whatever was true the last time a human clicked.
+
+   It does not poll any more. pg_cron refreshes quotes SERVER side -- the whole
+   board every minute through the US session, open positions every 20 seconds,
+   crypto every 5 minutes around the clock -- and Postgres pushes the changed
+   rows here over Realtime. So prices are current whether or not this page is
+   open, every tab sees the same numbers, and the feed carries one refresher
+   instead of one per browser.
+
+   Why not a broker webhook: nobody webhooks price ticks. Quote data is streamed
+   over a socket by vendors who charge for it, and Robinhood publishes no
+   market-data API at all. The broker webhooks that do exist are for order and
+   account events, not prices.
+
+   The clock label below is approximate and knows nothing about market holidays.
+   It never asserts a price -- the quote's own timestamp does that -- so on a
+   holiday the board just shows its age and lets that speak. */
+var liveOn = true, liveChan = null, liveTick = null, livePaint = null;
+
+function marketPhase(){
+  var et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+  var day = et.getDay(), mins = et.getHours()*60 + et.getMinutes();
+  if(day===0 || day===6) return "weekend";
+  if(mins >= 570 && mins < 960)  return "open";   /* 9:30 - 16:00 ET */
+  if(mins >= 240 && mins < 570)  return "pre";
+  if(mins >= 960 && mins < 1200) return "post";
+  return "closed";
+}
+function ageWords(iso){
+  if(!iso) return "never";
+  var secs = Math.max(0, Math.round((Date.now() - new Date(iso).getTime())/1000));
+  if(secs < 60) return secs + "s ago";
+  if(secs < 3600) return Math.round(secs/60) + "m ago";
+  if(secs < 86400) return Math.round(secs/3600) + "h ago";
+  return Math.round(secs/86400) + "d ago";
+}
+function newestQuoteAt(){
+  return (D.quotes||[]).reduce(function(m,x){
+    return (!m || (x.fetched_at||"") > m) ? (x.fetched_at||m) : m; }, null);
+}
+function paintAge(){
+  var el = $("board-age"); if(!el) return;
+  var phase = marketPhase(), at = newestQuoteAt();
+  var label = phase==="open" ? "Market open"
+            : phase==="pre"  ? "Pre-market"
+            : phase==="post" ? "After hours"
+            : phase==="weekend" ? "Weekend" : "Market closed";
+  var streaming = liveOn && liveChan;
+  el.innerHTML = '<span style="color:'+(streaming?"var(--success)":"var(--text-muted)")+'">&#9679;</span> '
+    + esc(label) + ' · updated ' + esc(ageWords(at))
+    + (streaming ? ' · <span class="muted">streaming</span>' : ' · <span class="muted">paused</span>');
+}
+
+/* Rows arrive in a burst of ~74, one per symbol. Patch them into memory and
+   repaint once, rather than 74 times. */
+var liveDirty = false;
+function liveRepaintSoon(){
+  if(liveDirty) return;
+  liveDirty = true;
+  setTimeout(function(){
+    liveDirty = false;
+    /* Always repaint, even when the Trade pane is hidden. Skipping the render
+       to "save work" left the board showing whatever it had when Hunter last
+       looked at it, so switching back from Overview showed stale prices with a
+       live badge over them. Painting a hidden pane costs nothing worth having. */
+    renderTrade();
+  }, 300);
+}
+function applyQuote(row){
+  if(!row || !row.symbol) return;
+  var list = D.quotes || (D.quotes = []);
+  for(var i=0;i<list.length;i++){
+    if(list[i].symbol === row.symbol){ list[i] = row; liveRepaintSoon(); return; }
+  }
+  list.push(row); liveRepaintSoon();
+}
+
+function startLive(){
+  if(liveTick) clearInterval(liveTick);
+  liveTick = setInterval(paintAge, 1000);
+  document.addEventListener("visibilitychange", paintAge);
+  window.addEventListener("hashchange", paintAge);
+  subscribeQuotes();
+}
+function subscribeQuotes(){
+  if(liveChan && sb.removeChannel){ sb.removeChannel(liveChan); }
+  liveChan = null;
+  /* A client build without Realtime should degrade to the manual button, not
+     take the whole tab down on load. */
+  if(!liveOn || typeof sb.channel !== "function"){ paintAge(); return; }
+  liveChan = sb.channel("quotes-live")
+    .on("postgres_changes", { event:"*", schema:"public", table:"quotes" },
+        function(msg){ applyQuote(msg.new); })
+    .subscribe(function(status){
+      /* Only claim to be streaming once the socket actually says so. */
+      if(status !== "SUBSCRIBED" && liveChan){ /* keep the badge honest */ }
+      paintAge();
+    });
+  paintAge();
+}
+
 /* Wired once at boot; renderTrade only paints. */
 function wireTrade(){
   var f=$("board-filter"); if(f) f.oninput=function(){ renderTrade(); };
+  var lv=$("board-live");
+  if(lv) lv.onchange=function(){ liveOn = lv.checked; subscribeQuotes(); };
+  startLive();
   var add=$("board-add-btn");
   if(add) add.onclick=async function(){
     var box=$("board-add"), sym=(box.value||"").trim().toUpperCase();
