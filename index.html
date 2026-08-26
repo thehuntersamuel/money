@@ -284,12 +284,67 @@ tbody tr:hover td { background: var(--surface-2); }
 .small { font-size: 11px; }
 .mono { font-variant-numeric: tabular-nums; font-family: var(--font-number); }
 
-/* ---- forms ---- */
+/* ---- forms ----
+   The Trade ticket shipped with bare browser inputs sitting next to buttons
+   that DO use the design system, so it read as a different site. One control
+   style, one label style, used everywhere a form appears. */
 select {
   font: inherit; font-size: 11.5px; padding: 4px 6px; border-radius: 4px;
   border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
 }
 input[type="checkbox"] { accent-color: var(--text-secondary); }
+
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field > span {
+  font-size: 9px; font-weight: 650; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--text-muted); white-space: nowrap;
+}
+.field input, .field select, .field textarea, .input {
+  font: inherit; font-family: var(--font-ui); font-size: 12.5px;
+  width: 100%; box-sizing: border-box;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2); color: var(--text);
+  transition: border-color .12s ease, background .12s ease;
+}
+.field textarea, textarea.input { resize: vertical; min-height: 62px; line-height: 1.5; }
+.field input::placeholder, .field textarea::placeholder, .input::placeholder { color: var(--text-muted); }
+.field input:hover, .field select:hover, .field textarea:hover, .input:hover { border-color: var(--border-strong); background: var(--surface-3); }
+.field input:focus, .field select:focus, .field textarea:focus, .input:focus {
+  outline: none; border-color: var(--brand); background: var(--surface-3);
+}
+.field.num input { text-align: right; font-family: var(--font-number); font-variant-numeric: tabular-nums; }
+.field.up input { text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+
+/* Eight controls that must line up on desktop and stay usable on a phone. */
+.ticket {
+  display: grid; gap: 10px 12px; align-items: end;
+  grid-template-columns: 1.15fr .85fr 1fr .7fr .95fr .95fr .95fr auto;
+}
+.ticket .place { align-self: end; }
+.ticket .place .btn { width: 100%; padding: 8px 20px; }
+.board-controls {
+  display: grid; gap: 10px 12px; align-items: end;
+  grid-template-columns: minmax(150px, 1fr) minmax(120px, 160px) auto auto;
+  max-width: 720px;
+}
+@media (max-width: 860px) {
+  .ticket { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ticket .place { grid-column: 1 / -1; }
+  .board-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.form-note { padding: 12px 16px 16px; }
+.inline-form {
+  display: grid; gap: 10px 12px; align-items: end;
+  grid-template-columns: minmax(120px, 180px) 1fr auto auto;
+  padding: 12px 16px; background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 720px) { .inline-form { grid-template-columns: 1fr 1fr; } }
+.note-line {
+  font-size: 11.5px; color: var(--text-secondary); line-height: 1.5;
+  border-left: 2px solid var(--border-strong); padding-left: 8px; margin-top: 4px;
+}
 :focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
 
 /* ---- login ---- */
@@ -431,26 +486,24 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
           <h2 class="card-title">Place a paper trade</h2>
           <div class="card-sub" id="paper-cap"></div>
         </header>
-        <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
-          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Symbol
-            <input id="tk-sym" placeholder="NVDA" style="width:110px;text-transform:uppercase"></label>
-          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Side
-            <select id="tk-dir" style="width:90px"><option value="long">Long</option><option value="short">Short</option></select></label>
-          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Horizon
-            <select id="tk-hz" style="width:110px"><option value="short">Short term</option><option value="long">Long term</option></select></label>
-          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Qty
-            <input id="tk-qty" type="number" step="any" min="0" placeholder="10" style="width:90px"></label>
-          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Entry
-            <input id="tk-entry" type="number" step="any" min="0" placeholder="live" style="width:110px"></label>
-          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Target
-            <input id="tk-target" type="number" step="any" min="0" placeholder="optional" style="width:110px"></label>
-          <label class="small muted" style="display:flex;flex-direction:column;gap:4px">Stop
-            <input id="tk-stop" type="number" step="any" min="0" placeholder="optional" style="width:110px"></label>
-          <button class="btn primary" id="tk-place">Place</button>
-          <span class="small muted" id="tk-msg" style="margin-left:4px"></span>
+        <div style="padding:14px 16px 0">
+          <div class="ticket">
+            <label class="field up"><span>Symbol</span><input id="tk-sym" placeholder="NVDA" autocomplete="off"></label>
+            <label class="field"><span>Side</span>
+              <select id="tk-dir"><option value="long">Long</option><option value="short">Short</option></select></label>
+            <label class="field"><span>Horizon</span>
+              <select id="tk-hz"><option value="short">Short term</option><option value="long">Long term</option></select></label>
+            <label class="field num"><span>Qty</span><input id="tk-qty" type="number" step="any" min="0" placeholder="10"></label>
+            <label class="field num"><span>Entry</span><input id="tk-entry" type="number" step="any" min="0" placeholder="live"></label>
+            <label class="field num"><span>Target</span><input id="tk-target" type="number" step="any" min="0" placeholder="—"></label>
+            <label class="field num"><span>Stop</span><input id="tk-stop" type="number" step="any" min="0" placeholder="—"></label>
+            <div class="place"><button class="btn primary" id="tk-place">Place</button></div>
+          </div>
         </div>
-        <div style="padding:0 16px 14px">
-          <input id="tk-thesis" placeholder="Why this trade? (your call, in your words)" style="width:100%">
+        <div class="form-note">
+          <label class="field"><span>Reasoning</span>
+            <textarea id="tk-thesis" placeholder="Why this trade? What has to be true for it to work, and what would tell you it is wrong."></textarea></label>
+          <div class="small" id="tk-msg" style="margin-top:8px;min-height:16px"></div>
         </div>
       </section>
       <div id="paper-open" style="margin-bottom:16px"></div>
@@ -459,18 +512,20 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
           <h2 class="card-title">Market board</h2>
           <div class="card-sub" id="board-sub"></div>
         </header>
-        <div style="padding:10px 16px 0;display:flex;align-items:center;gap:10px">
+        <div style="padding:12px 16px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <label class="small muted" style="display:flex;align-items:center;gap:6px;cursor:pointer">
             <input type="checkbox" id="board-live" checked> Live
           </label>
           <span class="small" id="board-age"></span>
         </div>
-        <div style="padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-          <input id="board-filter" placeholder="Filter symbol or name" style="width:220px">
-          <input id="board-add" placeholder="Add ticker" style="width:130px;text-transform:uppercase">
-          <button class="btn" id="board-add-btn">Add</button>
-          <button class="btn" id="board-refresh">Refresh quotes</button>
-          <span class="small muted" id="board-msg"></span>
+        <div style="padding:12px 16px 16px">
+          <div class="board-controls">
+            <label class="field"><span>Filter</span><input id="board-filter" placeholder="Symbol or name" autocomplete="off"></label>
+            <label class="field up"><span>Add ticker</span><input id="board-add" placeholder="TSLA" autocomplete="off"></label>
+            <div><button class="btn" id="board-add-btn" style="padding:8px 16px">Add</button></div>
+            <div><button class="btn" id="board-refresh" style="padding:8px 16px">Refresh</button></div>
+          </div>
+          <div class="small" id="board-msg" style="margin-top:8px;min-height:16px"></div>
         </div>
         <div id="board-body"></div>
       </section>
@@ -646,6 +701,7 @@ async function loadAll(){
     hist:      function(){ return q("v_net_worth_history", {order:{col:"captured_on",asc:true}}); },
     cashhist:  function(){ return q("v_cash_history", {order:{col:"day",asc:true}}); },
     quotes:    function(){ return q("quotes", {order:{col:"symbol",asc:true}}); },
+    session:   function(){ return q("market_session"); },
     watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
     trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
     paper:     function(){ return q("v_paper_account"); },
@@ -2078,6 +2134,91 @@ function paperTile(label, big, sub, color){
 function pnlColor(n){ return Number(n)>=0 ? "var(--success)" : "var(--danger)"; }
 function signed(n){ return (Number(n)>=0?"+":"")+fmt2(Math.abs(Number(n))===0?0:Number(n)); }
 
+/* One inline editor for both actions. Rendered into #trade-form under the
+   blotter so it never fights the table layout, and cleared on save so the next
+   click starts fresh. */
+function tradeFormSlot(root){
+  return (root && root.querySelector("[id^=trade-form]")) || $("trade-form") || $("trade-form-closed");
+}
+function closeTradeForm(){
+  ["trade-form","trade-form-closed"].forEach(function(id){ var f=$(id); if(f) f.innerHTML=""; });
+}
+
+function wireRowActions(root, rows){
+  function find(id){ return rows.filter(function(x){ return x.id===id; })[0]; }
+
+  Array.prototype.forEach.call(root.querySelectorAll("[data-note]"), function(b){
+    b.onclick=function(){
+      var t=find(b.getAttribute("data-note")); if(!t) return;
+      var closed = t.status==="closed";
+      var cur = closed ? (t.close_note||"") : (t.thesis||"");
+      var f=tradeFormSlot(root); if(!f) return;
+      closeTradeForm();
+      f.innerHTML='<div class="inline-form" style="grid-template-columns:1fr auto auto">'
+        + '<label class="field"><span>'+(closed?"What happened":"Reasoning")+' · '+esc(t.symbol)+'</span>'
+        + '<textarea id="note-text" placeholder="'+(closed
+            ? "Why you got out, and what you would do differently."
+            : "What has to be true for this to work, and what would tell you it is wrong.")+'"></textarea></label>'
+        + '<div><button class="btn primary" id="note-save" style="padding:8px 18px">Save</button></div>'
+        + '<div><button class="btn" id="note-cancel" style="padding:8px 14px">Cancel</button></div></div>';
+      $("note-text").value = cur;
+      $("note-text").focus();
+      $("note-cancel").onclick = closeTradeForm;
+      $("note-save").onclick = async function(){
+        var v=$("note-text").value.trim();
+        $("note-save").disabled=true;
+        var patch = closed ? { close_note: v||null } : { thesis: v||null };
+        patch.updated_at = new Date().toISOString();
+        var r = await sb.from("trades").update(patch).eq("id", t.id);
+        if(r.error){ alert(r.error.message); $("note-save").disabled=false; return; }
+        closeTradeForm();
+        await refresh();
+      };
+    };
+  });
+
+  Array.prototype.forEach.call(root.querySelectorAll("[data-close]"), function(b){
+    b.onclick=function(){
+      var t=find(b.getAttribute("data-close")); if(!t) return;
+      var f=tradeFormSlot(root); if(!f) return;
+      closeTradeForm();
+      f.innerHTML='<div class="inline-form">'
+        + '<label class="field num"><span>Exit price · '+esc(t.symbol)+'</span>'
+        + '<input id="close-px" type="number" step="any" min="0"></label>'
+        + '<label class="field"><span>What happened</span>'
+        + '<textarea id="close-note" placeholder="Hit the target, stopped out, changed your mind. Worth a sentence."></textarea></label>'
+        + '<div><button class="btn primary" id="close-go" style="padding:8px 18px">Close</button></div>'
+        + '<div><button class="btn" id="close-cancel" style="padding:8px 14px">Cancel</button></div></div>'
+        + '<div class="small" id="close-msg" style="padding:0 16px 12px;min-height:16px"></div>';
+      if(t.last_price!=null) $("close-px").value = t.last_price;
+      $("close-px").focus();
+      $("close-cancel").onclick = closeTradeForm;
+      $("close-go").onclick = async function(){
+        var n=Number($("close-px").value);
+        if(!isFinite(n) || n<=0){ $("close-msg").innerHTML='<span style="color:var(--danger)">Exit price has to be a positive number.</span>'; return; }
+        $("close-go").disabled=true;
+        var r = await sb.from("trades").update({
+          status:"closed", exit_price:n, closed_on:new Date().toISOString().slice(0,10),
+          close_note: ($("close-note").value.trim() || null),
+          updated_at:new Date().toISOString() }).eq("id", t.id);
+        if(r.error){ $("close-msg").textContent=r.error.message; $("close-go").disabled=false; return; }
+        closeTradeForm();
+        await refresh();
+      };
+    };
+  });
+
+  Array.prototype.forEach.call(root.querySelectorAll("[data-real]"), function(b){
+    b.onclick=async function(){
+      var id=b.getAttribute("data-real"), now=b.getAttribute("data-realnow")==="1";
+      b.disabled=true;
+      var r=await sb.from("trades").update({ is_real: !now, updated_at:new Date().toISOString() }).eq("id", id);
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
+}
+
 function renderTrade(){
   var acct = (D.paper||[])[0] || {};
   var cap  = (D.capital||[])[0] || {};
@@ -2107,7 +2248,11 @@ function renderTrade(){
        + '<span class="muted">Retirement is excluded; this is a simulation and places no orders.</span>');
   }
 
-  /* ---- open positions ---- */
+  /* ---- open positions ----
+     Closing used to go through prompt(), which is a browser dialog with no
+     styling, no validation and no room to say WHY you got out. Both the close
+     and the note now open inline under the row, so the reasoning lives with
+     the trade instead of evaporating. */
   var ob=$("paper-open");
   if(ob){
     if(!open.length){
@@ -2126,7 +2271,8 @@ function renderTrade(){
         if(t.is_real)       flags += '<span class="pill">REAL</span> ';
         h += '<tr><td><strong>'+esc(t.symbol)+'</strong> '
           +  '<span class="small muted">'+esc(t.direction==="short"?"short":"long")+' · '+esc(t.horizon)+' term</span>'
-          +  (t.thesis?'<div class="small muted">'+esc(t.thesis)+'</div>':'')+'</td>'
+          +  (t.thesis?'<div class="note-line">'+esc(t.thesis)+'</div>':'<div class="small muted" style="margin-top:3px">No reasoning recorded</div>')
+          +  '</td>'
           +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
           +  '<td class="num mono small">'+fmt2(Number(t.entry_price))+'</td>'
           +  '<td class="num mono small">'+(t.last_price==null?'<span class="muted">—</span>':fmt2(Number(t.last_price)))+'</td>'
@@ -2134,35 +2280,15 @@ function renderTrade(){
           +  (t.pnl_pct==null?'':' <span class="small" style="opacity:.7">'+(Number(t.pnl_pct)>=0?"+":"")+Number(t.pnl_pct).toFixed(1)+'%</span>')+'</td>'
           +  '<td class="num mono small muted">'+esc(String(t.days_held))+'</td>'
           +  '<td>'+flags+'</td>'
-          +  '<td class="num"><button class="btn" data-close="'+esc(t.id)+'">Close</button> '
+          +  '<td class="num" style="white-space:nowrap">'
+          +  '<button class="btn" data-note="'+esc(t.id)+'">Note</button> '
+          +  '<button class="btn" data-close="'+esc(t.id)+'">Close</button> '
           +  '<button class="btn" data-real="'+esc(t.id)+'" data-realnow="'+(t.is_real?"1":"0")+'">'
           +  (t.is_real?"Mark paper":"I took this")+'</button></td></tr>';
       });
-      ob.innerHTML = h+'</tbody></table></div></section>';
-      Array.prototype.forEach.call(ob.querySelectorAll("[data-close]"), function(b){
-        b.onclick=async function(){
-          var id=b.getAttribute("data-close");
-          var t=open.filter(function(x){return x.id===id;})[0];
-          var px=prompt("Close "+t.symbol+" at what price?", t.last_price!=null?String(t.last_price):"");
-          if(px===null) return;
-          var n=Number(px); if(!isFinite(n)||n<=0){ alert("Need a positive price."); return; }
-          b.disabled=true;
-          var r=await sb.from("trades").update({
-            status:"closed", exit_price:n, closed_on:new Date().toISOString().slice(0,10),
-            updated_at:new Date().toISOString() }).eq("id", id);
-          if(r.error) alert(r.error.message);
-          await refresh();
-        };
-      });
-      Array.prototype.forEach.call(ob.querySelectorAll("[data-real]"), function(b){
-        b.onclick=async function(){
-          var id=b.getAttribute("data-real"), now=b.getAttribute("data-realnow")==="1";
-          b.disabled=true;
-          var r=await sb.from("trades").update({ is_real: !now, updated_at:new Date().toISOString() }).eq("id", id);
-          if(r.error) alert(r.error.message);
-          await refresh();
-        };
-      });
+      h += '</tbody></table></div><div id="trade-form"></div></section>';
+      ob.innerHTML = h;
+      wireRowActions(ob, open);
     }
   }
 
@@ -2257,18 +2383,26 @@ function renderTrade(){
         + '<div class="card-sub">'+closed.length+' trade'+(closed.length===1?'':'s')+'</div></header>'
         + '<div class="table-wrap"><table><thead><tr><th>Position</th><th class="num">Qty</th>'
         + '<th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th>'
-        + '<th class="num">Held</th><th>Book</th></tr></thead><tbody>';
+        + '<th class="num">Held</th><th>Book</th><th></th></tr></thead><tbody>';
       closed.forEach(function(t){
+        /* Both halves of the record: why he got in, and what actually happened.
+           A blotter without the second half teaches nothing. */
+        var notes = '';
+        if(t.thesis)     notes += '<div class="note-line">'+esc(t.thesis)+'</div>';
+        if(t.close_note) notes += '<div class="note-line" style="border-left-color:var(--brand)">'+esc(t.close_note)+'</div>';
         ch += '<tr><td><strong>'+esc(t.symbol)+'</strong> <span class="small muted">'
-          +  esc(t.direction)+'</span>'+(t.thesis?'<div class="small muted">'+esc(t.thesis)+'</div>':'')+'</td>'
+          +  esc(t.direction)+'</span>'+notes+'</td>'
           +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
           +  '<td class="num mono small">'+fmt2(Number(t.entry_price))+'</td>'
           +  '<td class="num mono small">'+fmt2(Number(t.exit_price))+'</td>'
           +  '<td class="num mono" style="color:'+pnlColor(t.pnl||0)+'">'+signed(t.pnl||0)+'</td>'
           +  '<td class="num mono small muted">'+esc(String(t.days_held))+'d</td>'
-          +  '<td>'+(t.is_real?'<span class="pill">REAL</span>':'<span class="small muted">paper</span>')+'</td></tr>';
+          +  '<td>'+(t.is_real?'<span class="pill">REAL</span>':'<span class="small muted">paper</span>')+'</td>'
+          +  '<td class="num"><button class="btn" data-note="'+esc(t.id)+'">Note</button></td></tr>';
       });
-      cb.innerHTML = ch+'</tbody></table></div></section>';
+      ch += '</tbody></table></div><div id="trade-form-closed"></div></section>';
+      cb.innerHTML = ch;
+      wireRowActions(cb, closed);
     }
   }
 }
@@ -2294,14 +2428,34 @@ function renderTrade(){
    holiday the board just shows its age and lets that speak. */
 var liveOn = true, liveChan = null, liveTick = null, livePaint = null;
 
+/* The session used to be guessed from a hardcoded 9:30-16:00 ET clock, which
+   is wrong twice a year on DST and wrong on every market holiday -- on
+   Thanksgiving it would have said "Market open" over 74 frozen prices.
+
+   Yahoo publishes currentTradingPeriod with the NEXT VALID session, holidays
+   already accounted for, and the refresher stores it in market_session. So on
+   a holiday pre_start is tomorrow, and this reports "closed, opens Fri 4:00 AM"
+   instead of lying. No calendar of our own to maintain. */
 function marketPhase(){
-  var et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-  var day = et.getDay(), mins = et.getHours()*60 + et.getMinutes();
-  if(day===0 || day===6) return "weekend";
-  if(mins >= 570 && mins < 960)  return "open";   /* 9:30 - 16:00 ET */
-  if(mins >= 240 && mins < 570)  return "pre";
-  if(mins >= 960 && mins < 1200) return "post";
-  return "closed";
+  var m = (D.session||[])[0];
+  if(!m || !m.pre_start) return { key:"unknown", label:"Session unknown" };
+  var now = Date.now(),
+      pre = +new Date(m.pre_start),
+      rs  = +new Date(m.regular_start),
+      re  = +new Date(m.regular_end),
+      pe  = +new Date(m.post_end || m.regular_end);
+  if(now >= rs && now < re) return { key:"regular", label:"Market open" };
+  if(now >= pre && now < rs) return { key:"pre",    label:"Pre-market" };
+  if(now >= re  && now < pe) return { key:"post",   label:"After hours" };
+  if(now < pre)  return { key:"closed", label:"Market closed", opensAt:pre };
+  /* Past the close: the heartbeat will roll the calendar to the next session. */
+  return { key:"closed", label:"Market closed" };
+}
+function opensWords(ms){
+  var d = new Date(ms), now = new Date();
+  var sameDay = d.toDateString() === now.toDateString();
+  var t = d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit" });
+  return sameDay ? t : d.toLocaleDateString("en-US", { weekday:"short" }) + " " + t;
 }
 function ageWords(iso){
   if(!iso) return "never";
@@ -2317,14 +2471,13 @@ function newestQuoteAt(){
 }
 function paintAge(){
   var el = $("board-age"); if(!el) return;
-  var phase = marketPhase(), at = newestQuoteAt();
-  var label = phase==="open" ? "Market open"
-            : phase==="pre"  ? "Pre-market"
-            : phase==="post" ? "After hours"
-            : phase==="weekend" ? "Weekend" : "Market closed";
+  var ph = marketPhase(), at = newestQuoteAt();
   var streaming = liveOn && liveChan;
-  el.innerHTML = '<span style="color:'+(streaming?"var(--success)":"var(--text-muted)")+'">&#9679;</span> '
-    + esc(label) + ' · updated ' + esc(ageWords(at))
+  var open = ph.key === "regular";
+  el.innerHTML = '<span style="color:'+(open&&streaming?"var(--success)":"var(--text-muted)")+'">&#9679;</span> '
+    + esc(ph.label)
+    + (ph.opensAt ? ' <span class="muted">· opens '+esc(opensWords(ph.opensAt))+'</span>' : '')
+    + ' · updated ' + esc(ageWords(at))
     + (streaming ? ' · <span class="muted">streaming</span>' : ' · <span class="muted">paused</span>');
 }
 
