@@ -316,21 +316,33 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 .field.num input { text-align: right; font-family: var(--font-number); font-variant-numeric: tabular-nums; }
 .field.up input { text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
 
-/* Eight controls that must line up on desktop and stay usable on a phone. */
+/* Thirteen controls now. An explicit column list would need re-tuning every
+   time a field is added and would overflow a 352px phone; auto-fill reflows
+   instead. At 352px the content box is 320px, which fits two 118px columns
+   with room to spare, so the page never scrolls sideways. */
 .ticket {
   display: grid; gap: 10px 12px; align-items: end;
-  grid-template-columns: 1.15fr .85fr 1fr .7fr .95fr .95fr .95fr auto;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
 }
-.ticket .place { align-self: end; }
-.ticket .place .btn { width: 100%; padding: 8px 20px; }
+.ticket .place { grid-column: 1 / -1; }
+.ticket .place .btn { width: 100%; padding: 9px 20px; }
+/* Four reasoning boxes: two up on a desktop, stacked on a phone. */
+.reasons { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.gate-note {
+  font-size: 11px; line-height: 1.55; color: var(--text-muted);
+  border-left: 2px solid var(--brand-border); padding-left: 9px; margin-top: 12px;
+}
+.meta-line {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px;
+  font-size: 10.5px; color: var(--text-muted);
+}
+.meta-line b { color: var(--text-secondary); font-weight: 600; }
 .board-controls {
   display: grid; gap: 10px 12px; align-items: end;
   grid-template-columns: minmax(150px, 1fr) minmax(120px, 160px) auto auto;
   max-width: 720px;
 }
 @media (max-width: 860px) {
-  .ticket { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ticket .place { grid-column: 1 / -1; }
   .board-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .form-note { padding: 12px 16px 16px; }
@@ -494,6 +506,13 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
               <select id="tk-dir"><option value="long">Long</option><option value="short">Short</option></select></label>
             <label class="field"><span>Horizon</span>
               <select id="tk-hz"><option value="short">Short term</option><option value="long">Long term</option></select></label>
+            <label class="field"><span>Setup</span>
+              <select id="tk-setup"><option value="core">Core position</option><option value="swing">Swing trade</option><option value="catalyst">Catalyst trade</option><option value="hedge">Hedge</option></select></label>
+            <label class="field num"><span>Confidence</span><input id="tk-confidence" type="number" step="1" min="1" max="100" placeholder="70"></label>
+            <label class="field num"><span>Upside %</span><input id="tk-upside" type="number" step="any" min="0" placeholder="20"></label>
+            <label class="field num"><span>Downside %</span><input id="tk-downside" type="number" step="any" min="0" placeholder="8"></label>
+            <label class="field num"><span>Max book risk %</span><input id="tk-risk-pct" type="number" step="0.1" min="0.1" max="2" placeholder="1"></label>
+            <label class="field"><span>Review date</span><input id="tk-review-date" type="date"></label>
             <label class="field num"><span>Qty</span><input id="tk-qty" type="number" step="any" min="0" placeholder="10"></label>
             <label class="field num"><span>Entry</span><input id="tk-entry" type="number" step="any" min="0" placeholder="live"></label>
             <label class="field num"><span>Target</span><input id="tk-target" type="number" step="any" min="0" placeholder="—"></label>
@@ -502,9 +521,18 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
           </div>
         </div>
         <div class="form-note">
-          <label class="field"><span>Reasoning</span>
-            <textarea id="tk-thesis" placeholder="Why this trade? What has to be true for it to work, and what would tell you it is wrong."></textarea></label>
-          <div class="small" id="tk-msg" style="margin-top:8px;min-height:16px"></div>
+          <div class="reasons">
+            <label class="field"><span>Thesis</span>
+              <textarea id="tk-thesis" placeholder="Why should this trade work, and why now?"></textarea></label>
+            <label class="field"><span>Catalyst</span>
+              <textarea id="tk-catalyst" placeholder="What event or change can move the price, and on what timeline?"></textarea></label>
+            <label class="field"><span>Invalidation</span>
+              <textarea id="tk-invalidation" placeholder="What evidence, price action, or date proves the thesis wrong?"></textarea></label>
+            <label class="field"><span>Evidence and sources</span>
+              <textarea id="tk-evidence" placeholder="Facts checked, source links, counterarguments, and unresolved risks."></textarea></label>
+          </div>
+          <div class="gate-note">Nothing is placed without a thesis, catalyst, invalidation, evidence, review date, target and stop, and at least 1.5:1 reward to risk &mdash; both as you state it and as your prices actually imply. Planned loss is capped at 2% of the book. Simulation only; no orders are placed.</div>
+          <div class="small" id="tk-msg" style="margin-top:10px;min-height:16px"></div>
         </div>
       </section>
       <div id="paper-open" style="margin-bottom:16px"></div>
@@ -2121,6 +2149,126 @@ function renderInvestments(){
   }
 }
 
+/* ---------- trade decision gates ----------
+   Pure. No DOM, no network, no clock beyond the review date it is handed. Every
+   fail-closed rule lives in here so the tests exercise the same code the Place
+   button does, rather than a copy that drifts.
+
+   Blank is not zero. A missing number returns null and a non-numeric one
+   returns NaN, and the two produce different messages, because "you left
+   downside empty" and "you typed 'abc'" are different mistakes and silently
+   coercing either to 0 would let a trade through with no downside at all. */
+function numOrNull(v){
+  if(v === null || v === undefined) return null;
+  var t = String(v).trim();
+  if(t === "") return null;
+  return Number(t);
+}
+function blank(v){ return !String(v == null ? "" : v).trim(); }
+
+var TRADE_SETUPS = ["core","swing","catalyst","hedge"];
+var MIN_RR = 1.5;      /* reward-to-risk floor, stated AND implied */
+var MAX_BOOK_RISK = 2; /* percent of book equity that may be put at risk */
+
+function validateTicket(f, bk, quote){
+  function bad(m){ return { ok:false, error:m }; }
+
+  var sym = String(f.symbol || "").trim().toUpperCase();
+  if(!sym) return bad("Symbol?");
+
+  var qty = numOrNull(f.qty);
+  if(qty === null) return bad("Quantity is required.");
+  if(!isFinite(qty) || qty <= 0) return bad("Quantity has to be positive.");
+
+  var entry = numOrNull(f.entry);
+  if(entry === null){
+    if(!quote || quote.price == null) return bad("No live price for " + sym + ". Add it to the board first, or type an entry.");
+    entry = Number(quote.price);
+  }
+  if(!isFinite(entry) || entry <= 0) return bad("Entry has to be positive.");
+
+  var target = numOrNull(f.target), stop = numOrNull(f.stop);
+  if(target === null || stop === null) return bad("Target and stop are both required.");
+  if(!isFinite(target) || target <= 0 || !isFinite(stop) || stop <= 0) return bad("Target and stop must be positive numbers.");
+
+  var dir = f.direction === "short" ? "short" : "long";
+  if(dir === "long"  && (target <= entry || stop >= entry))
+    return bad("A long needs the target above entry and the stop below it.");
+  if(dir === "short" && (target >= entry || stop <= entry))
+    return bad("A short needs the target below entry and the stop above it.");
+
+  if(TRADE_SETUPS.indexOf(f.setup) < 0) return bad("Pick a setup.");
+
+  var conf = numOrNull(f.confidence);
+  if(conf === null) return bad("Confidence is required.");
+  if(!isFinite(conf) || conf < 1 || conf > 100) return bad("Confidence must be between 1 and 100.");
+
+  var up = numOrNull(f.upside), down = numOrNull(f.downside);
+  if(up === null || down === null) return bad("Stated upside and downside are both required.");
+  if(!isFinite(up) || !isFinite(down) || up <= 0 || down <= 0) return bad("Upside and downside must be positive numbers.");
+  if(up / down < MIN_RR)
+    return bad("Stated reward to risk is " + (up/down).toFixed(2) + ":1. It has to be at least " + MIN_RR + ":1.");
+
+  /* The prices are the truth. Stated upside is a forecast and can disagree with
+     entry/target/stop, so a gate that only checked the typed numbers could be
+     passed by a trade whose actual geometry is 0.4:1. Both are checked. */
+  var impliedUp = Math.abs(target - entry) / entry * 100;
+  var impliedDown = Math.abs(entry - stop) / entry * 100;
+  var rr = impliedDown > 0 ? Math.abs(target - entry) / Math.abs(entry - stop) : 0;
+  if(rr < MIN_RR)
+    return bad("Your prices imply " + rr.toFixed(2) + ":1, not " + MIN_RR + ":1. Move the target or tighten the stop.");
+
+  var riskPct = numOrNull(f.riskPct);
+  if(riskPct === null) return bad("Max book risk is required.");
+  if(!isFinite(riskPct) || riskPct <= 0) return bad("Max book risk must be a positive number.");
+  if(riskPct > MAX_BOOK_RISK) return bad("Max book risk cannot exceed " + MAX_BOOK_RISK + "% of the book.");
+
+  if(blank(f.reviewDate)) return bad("Review date is required.");
+
+  if(blank(f.thesis) || blank(f.catalyst) || blank(f.invalidation) || blank(f.evidence))
+    return bad("Thesis, catalyst, invalidation and evidence are all required.");
+
+  if(!bk || !bk.book_id) return bad("Pick a book first.");
+
+  /* Existing protection: the sim refuses what the account would refuse. */
+  var cost = qty * entry, bp = Number(bk.buying_power || 0);
+  if(bk.buying_power != null && cost > bp)
+    return bad("COST_OVER::" + cost + "::" + bp + "::" + (bk.label || ""));
+
+  var plannedLoss = Math.abs(entry - stop) * qty;
+  var riskLimit = Number(bk.equity || bk.stake || 0) * riskPct / 100;
+  if(riskLimit > 0 && plannedLoss > riskLimit)
+    return bad("RISK_OVER::" + plannedLoss + "::" + riskLimit + "::" + riskPct);
+
+  return { ok:true, trade:{
+    symbol: sym, direction: dir, horizon: f.horizon === "long" ? "long" : "short",
+    setup: f.setup, qty: qty, entry_price: entry, target_price: target, stop_price: stop,
+    confidence: Math.round(conf),
+    stated_upside_pct: up, stated_downside_pct: down,
+    max_book_risk_pct: riskPct,
+    planned_loss: Math.round(plannedLoss * 100) / 100,
+    review_on: f.reviewDate,
+    thesis: String(f.thesis).trim(), catalyst: String(f.catalyst).trim(),
+    invalidation: String(f.invalidation).trim(), evidence: String(f.evidence).trim()
+  }, computed:{ impliedUpside: impliedUp, impliedDownside: impliedDown, rr: rr,
+                cost: cost, plannedLoss: plannedLoss, riskLimit: riskLimit } };
+}
+
+/* The two money refusals carry their numbers through as codes so the pure
+   function stays free of markup and the UI can colour them. */
+function gateMessage(err){
+  var p = String(err).split("::");
+  if(p[0] === "COST_OVER")
+    return '<span style="color:var(--danger)">' + esc(fmt2(Number(p[1])))
+      + ' is more than the ' + esc(fmt2(Number(p[2]))) + ' in ' + esc(p[3]) + '.</span>'
+      + ' <span class="muted">That is the real account balance, not a made-up stake.</span>';
+  if(p[0] === "RISK_OVER")
+    return '<span style="color:var(--danger)">Planned loss ' + esc(fmt2(Number(p[1])))
+      + ' is over your ' + esc(Number(p[3]).toFixed(1)) + '% cap of ' + esc(fmt2(Number(p[2]))) + '.</span>'
+      + ' <span class="muted">Cut the size or tighten the stop.</span>';
+  return '<span style="color:var(--danger)">' + esc(err) + '</span>';
+}
+
 /* ---------- render: trade (paper) ----------
    A paper floor, not an advice engine. Every trade on this tab starts with
    Hunter typing a symbol and a thesis; nothing here ranks, scores or suggests
@@ -2220,6 +2368,34 @@ function wireRowActions(root, rows){
   });
 }
 
+/* The decision record, compact enough to sit in a table row. Older rows carry
+   none of these columns and simply render nothing here, which is the
+   compatibility requirement: a thesis-only trade from before the gates still
+   reads as a thesis-only trade. */
+function decisionMeta(t){
+  var bits=[];
+  if(t.setup)      bits.push('<b>'+esc(t.setup)+'</b>');
+  if(t.confidence!=null) bits.push('conf <b>'+esc(String(t.confidence))+'</b>');
+  if(t.rr_ratio!=null)   bits.push('<b>'+esc(Number(t.rr_ratio).toFixed(2))+':1</b> planned');
+  if(t.max_book_risk_pct!=null) bits.push('risk <b>'+esc(Number(t.max_book_risk_pct).toFixed(1))+'%</b>');
+  if(t.planned_loss!=null) bits.push('max loss <b>'+esc(fmt2(Number(t.planned_loss)))+'</b>');
+  if(t.review_on) bits.push((t.review_due?'<b style="color:var(--warning)">review due</b> ':'review ')+esc(shortDate(t.review_on)));
+  return bits.length ? '<div class="meta-line">'+bits.join('')+'</div>' : '';
+}
+function decisionNotes(t){
+  var h='';
+  function line(label, val, accent){
+    if(!val) return;
+    h += '<div class="note-line"'+(accent?' style="border-left-color:'+accent+'"':'')+'>'
+      +  '<b class="muted">'+esc(label)+'</b> '+esc(val)+'</div>';
+  }
+  line("Thesis", t.thesis);
+  line("Catalyst", t.catalyst);
+  line("Invalidation", t.invalidation);
+  line("Evidence", t.evidence);
+  return h;
+}
+
 function renderTrade(){
   var books = D.books || [];
   /* Two books, two different kinds of money. Blending them into one stake was
@@ -2305,7 +2481,8 @@ function renderTrade(){
         if(t.is_real)       flags += '<span class="pill">REAL</span> ';
         h += '<tr><td><strong>'+esc(t.symbol)+'</strong> '
           +  '<span class="small muted">'+esc(t.direction==="short"?"short":"long")+' · '+esc(t.horizon)+' term</span>'
-          +  (t.thesis?'<div class="note-line">'+esc(t.thesis)+'</div>':'<div class="small muted" style="margin-top:3px">No reasoning recorded</div>')
+          +  decisionMeta(t)
+          +  (t.thesis||t.catalyst?decisionNotes(t):'<div class="small muted" style="margin-top:3px">No reasoning recorded</div>')
           +  '</td>'
           +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
           +  '<td class="num mono small">'+fmt2(Number(t.entry_price))+'</td>'
@@ -2421,9 +2598,9 @@ function renderTrade(){
       closed.forEach(function(t){
         /* Both halves of the record: why he got in, and what actually happened.
            A blotter without the second half teaches nothing. */
-        var notes = '';
-        if(t.thesis)     notes += '<div class="note-line">'+esc(t.thesis)+'</div>';
-        if(t.close_note) notes += '<div class="note-line" style="border-left-color:var(--brand)">'+esc(t.close_note)+'</div>';
+        var notes = decisionMeta(t) + decisionNotes(t);
+        if(t.close_note) notes += '<div class="note-line" style="border-left-color:var(--brand)">'
+          + '<b class="muted">Outcome</b> '+esc(t.close_note)+'</div>';
         ch += '<tr><td><strong>'+esc(t.symbol)+'</strong> <span class="small muted">'
           +  esc(t.direction)+'</span>'+notes+'</td>'
           +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
@@ -2606,43 +2783,34 @@ function wireTrade(){
   if(place) place.onclick=async function(){
     var msg=$("tk-msg"); msg.textContent="";
     var sym=($("tk-sym").value||"").trim().toUpperCase();
-    var qty=Number($("tk-qty").value);
-    var entry=$("tk-entry").value===""?null:Number($("tk-entry").value);
-    var target=$("tk-target").value===""?null:Number($("tk-target").value);
-    var stop=$("tk-stop").value===""?null:Number($("tk-stop").value);
-    var thesis=($("tk-thesis").value||"").trim();
-    if(!sym){ msg.textContent="Symbol?"; return; }
-    if(!isFinite(qty)||qty<=0){ msg.textContent="Quantity has to be positive."; return; }
-    var qt=(D.quotes||[]).filter(function(x){return x.symbol===sym;})[0];
-    if(entry===null){
-      if(!qt||qt.price==null){ msg.textContent="No live price for "+sym+". Add it to the board first, or type an entry."; return; }
-      entry=Number(qt.price);
-    }
-    if(!isFinite(entry)||entry<=0){ msg.textContent="Entry has to be positive."; return; }
-    /* The point of tying the stake to real capital is that the sim refuses
-       what the bank would refuse. Without this the board happily lets him
-       practise $50k positions on $11.8k and learn nothing about sizing. */
-    var bk = (D.books||[]).filter(function(x){ return x.book_id===D.book; })[0] || {};
-    if(!bk.book_id){ msg.textContent="Pick a book first."; return; }
-    var cost = qty * entry, bp = Number(bk.buying_power||0);
-    if(bk.buying_power != null && cost > bp){
-      msg.innerHTML = '<span style="color:var(--danger)">'+esc(fmt2(cost))
-        + ' is more than the '+esc(fmt2(bp))+' in '+esc(bk.label)+'.</span>'
-        + ' <span class="muted">That is the real account balance, not a made-up stake.</span>';
-      return;
-    }
+    var bk=(D.books||[]).filter(function(x){ return x.book_id===D.book; })[0] || {};
+    var quote=(D.quotes||[]).filter(function(x){ return x.symbol===sym; })[0];
+
+    var v = validateTicket({
+      symbol:sym, qty:$("tk-qty").value, entry:$("tk-entry").value,
+      target:$("tk-target").value, stop:$("tk-stop").value,
+      direction:$("tk-dir").value, horizon:$("tk-hz").value, setup:$("tk-setup").value,
+      confidence:$("tk-confidence").value, upside:$("tk-upside").value,
+      downside:$("tk-downside").value, riskPct:$("tk-risk-pct").value,
+      reviewDate:$("tk-review-date").value,
+      thesis:$("tk-thesis").value, catalyst:$("tk-catalyst").value,
+      invalidation:$("tk-invalidation").value, evidence:$("tk-evidence").value
+    }, bk, quote);
+
+    if(!v.ok){ msg.innerHTML = gateMessage(v.error); return; }
+
     place.disabled=true; msg.textContent="Placing…";
-    if(!qt){ await sb.from("watchlist").insert({ symbol: sym });
-             try{ await fnCall("quotes-refresh",{symbols:[sym]}); }catch(e){} }
-    var r=await sb.from("trades").insert({
-      book_id: bk.book_id,
-      symbol:sym, direction:$("tk-dir").value, horizon:$("tk-hz").value,
-      qty:qty, entry_price:entry, target_price:target, stop_price:stop,
-      thesis: thesis || null
-    });
+    if(!quote){ await sb.from("watchlist").insert({ symbol: v.trade.symbol });
+                try{ await fnCall("quotes-refresh",{symbols:[v.trade.symbol]}); }catch(e){} }
+    var row = v.trade; row.book_id = bk.book_id;
+    var r=await sb.from("trades").insert(row);
     place.disabled=false;
-    if(r.error){ msg.textContent=r.error.message; return; }
-    ["tk-qty","tk-entry","tk-target","tk-stop","tk-thesis"].forEach(function(id){ $(id).value=""; });
+    if(r.error){ msg.innerHTML='<span style="color:var(--danger)">'+esc(r.error.message)+'</span>'; return; }
+    /* Cleared only on success. A failed insert must not make him retype the
+       decision record he just wrote. */
+    ["tk-qty","tk-entry","tk-target","tk-stop","tk-thesis","tk-catalyst","tk-invalidation",
+     "tk-evidence","tk-confidence","tk-upside","tk-downside","tk-risk-pct","tk-review-date"
+    ].forEach(function(id){ if($(id)) $(id).value=""; });
     msg.textContent="";
     await refresh();
   };
