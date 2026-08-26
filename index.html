@@ -1970,11 +1970,12 @@ function renderInvChart(){
   hero.textContent = fmt2(live);
 
   if(days.length<2){
-    delta.innerHTML='<span class="muted">Tracking started '
-      + (days.length ? esc(shortDate(days[0])) : 'today')
-      + '. The line fills in one point per day, per sync.</span>';
+    delta.innerHTML='<span class="muted">'
+      + (days.length ? 'Only '+esc(shortDate(days[0]))+' falls in this range.'
+                     : 'No history in this range.')
+      + '</span>';
     svg.innerHTML='<text class="axis-label" x="360" y="105" text-anchor="middle">'
-      +'Not enough history yet to draw a line.</text>';
+      +'Not enough history in this range to draw a line.</text>';
     return;
   }
 
@@ -1982,10 +1983,17 @@ function renderInvChart(){
   var chg=last-first, pct=first!==0 ? (chg/Math.abs(first)*100) : null;
   var up = chg>=0;
   var c = up ? col("--good") : col("--danger");
+  /* Most of this line is rebuilt from the investment ledger and historical
+     closes rather than read off Plaid that day, and it should say so. Only
+     today's point is an observed balance; the rest is quantity held on the day
+     times that day's close. */
+  var rebuilt = rows.filter(function(r){ return r.is_reconstructed; }).length;
   delta.innerHTML='<span class="mono" style="color:'+c+';font-weight:600">'
     + (up?'+':'') + fmt2(chg)
     + (pct===null?'':' ('+(up?'+':'')+pct.toFixed(2)+'%)')
-    + '</span> <span class="muted">'+esc(rangeBounds().label)+'</span>';
+    + '</span> <span class="muted">'+esc(rangeBounds().label)
+    + (rebuilt ? ' · rebuilt from your trade history' : '')
+    + '</span>';
 
   var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
   if(lo===hi){ lo-=1; hi+=1; }
