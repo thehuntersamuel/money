@@ -356,6 +356,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 
   <div id="app" style="display:none">
     <div id="attention"></div>
+    <div id="flags-body"></div>
 
     <!-- Overview tab -->
     <div data-pane="overview">
@@ -606,6 +607,7 @@ async function loadAll(){
     invhist:   function(){ return q("v_investment_history", {order:{col:"day",asc:true}}); },
     owned:     function(){ return q("v_manual_assets", {order:{col:"value",asc:false}}); },
     recurring: function(){ return q("v_recurring"); },
+    flags:     function(){ return q("v_flags"); },
     items:     function(){ return sb.from("plaid_items")
                   .select("id, institution_name, status, last_synced_at, entity_id, granted_products")
                   .then(function(r){ return r.data||[]; }); },
@@ -1001,7 +1003,7 @@ function renderOverview(){
   renderRangeRow();
   renderWall(); renderSeg(); renderTiles(); renderTrend(); renderFlow();
   renderPersonalOnly();
-  renderOwned(); renderEntities(); renderBuckets(); renderRecurring();
+  renderOwned(); renderEntities(); renderBuckets(); renderRecurring(); renderFlags();
   renderSpend(); renderMerchants(); renderHealth(); renderDebt(); renderAttention();
 }
 
@@ -1027,6 +1029,55 @@ function groupTest(key){
 /* Anything the named groups miss still has to be reachable. */
 function inAnyNamedGroup(a){
   return ACCT_GROUPS.some(function(g){ return g.key!=="all" && g.test(a); });
+}
+
+/* ---------- render: flags ---------- */
+/* Computed nightly in the database, not here, so this panel and Maddox are
+   reading the same rows and can never disagree about what happened. Dismissing
+   is per-flag and sticks until the underlying number moves -- dismiss a price
+   change and it stays gone unless the price changes again. */
+var SEV_COLOR = { critical: "--danger", warning: "--warning", info: "--personal" };
+
+function renderFlags(){
+  var el = $("flags-body"); if(!el) return;
+  var all = (D.flags || []).filter(function(f){
+    return D.mode === "all" || !f.entity_slug || f.entity_slug === D.mode;
+  });
+  var open = all.filter(function(f){ return f.is_open; });
+
+  if(!open.length){ el.innerHTML = ""; return; }
+
+  var h = '<section class="card" style="margin-bottom:16px"><header class="card-head">'
+        + '<h2 class="card-title">Needs a look</h2>'
+        + '<div class="card-sub">'+open.length+' open</div></header>'
+        + '<div style="padding:2px 0">';
+
+  open.forEach(function(f){
+    var c = SEV_COLOR[f.severity] || "--personal";
+    h += '<div style="display:flex;gap:12px;align-items:flex-start;padding:10px 16px;'
+      +  'border-top:1px solid var(--border)">'
+      +  '<i style="flex:none;width:6px;height:6px;border-radius:50%;margin-top:7px;'
+      +  'background:var('+c+')"></i>'
+      +  '<div style="flex:1;min-width:0">'
+      +  '<div style="font-weight:600">'+esc(f.title)+'</div>'
+      +  (f.body ? '<div class="small muted">'+esc(f.body)+'</div>' : '')
+      +  '</div>'
+      +  '<button class="btn" data-flag="'+f.id+'" style="flex:none;padding:4px 10px;font-size:12.5px">'
+      +  'Dismiss</button></div>';
+  });
+  h += '</div></section>';
+  el.innerHTML = h;
+
+  Array.prototype.forEach.call(el.querySelectorAll("[data-flag]"), function(b){
+    b.onclick = async function(){
+      b.disabled = true;
+      var r = await sb.from("flags")
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq("id", b.getAttribute("data-flag"));
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
 }
 
 /* ---------- render: recurring charges ---------- */
