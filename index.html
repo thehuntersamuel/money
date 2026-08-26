@@ -1076,34 +1076,54 @@ function renderOwned(){
       +  '<th>Asset</th><th>Type</th><th>Entity</th><th>Valued</th><th style="text-align:right">Value</th><th></th>'
       +  '</tr></thead><tbody>';
     rows.forEach(function(o){
-      var stale = Number(o.days_since_valued) > 365;
       h += '<tr><td>'+esc(o.label)+(o.note?'<div class="small muted">'+esc(o.note)+'</div>':'')+'</td>'
         +  '<td class="small">'+esc(KIND_LABEL[o.kind] || o.kind)+'</td>'
         +  '<td><span class="pill entity-'+(o.entity_slug==="personal"?"personal":"business")+'">'
         +  esc(o.entity_name)+'</span></td>'
-        +  '<td class="small'+(stale?'" style="color:var(--warning)':'')+'">'+shortDate(o.valued_on)
-        +  (stale?' · stale':'')+'</td>'
+        +  '<td class="small">'+shortDate(o.valued_on)+'</td>'
         +  '<td class="mono" style="text-align:right">'+fmt(Number(o.value))+'</td>'
-        +  '<td style="text-align:right"><button class="btn" data-reval="'+o.id+'" '
-        +  'style="padding:4px 10px;font-size:12.5px">Update value</button></td></tr>';
+        +  '<td style="text-align:right">'
+        +  '<button class="btn" data-reval="'+o.id+'" style="padding:4px 10px;font-size:12.5px">Edit</button> '
+        +  '<button class="btn" data-adel="'+o.id+'" style="padding:4px 10px;font-size:12.5px;color:var(--danger)">Remove</button>'
+        +  '</td></tr>';
     });
     h += '</tbody></table></div>';
   }
   h += '<div style="padding:12px 16px"><button class="btn" id="owned-add">Add asset</button></div></section>';
   el.innerHTML = h;
 
+  /* Name, value and note are all editable. A description written by anyone but
+     Hunter should never be stuck on his own asset. */
   Array.prototype.forEach.call(el.querySelectorAll("[data-reval]"), function(b){
     b.onclick = async function(){
       var id = b.getAttribute("data-reval");
-      var cur = (D.owned||[]).filter(function(x){ return x.id===id; })[0];
-      var v = prompt("Current value of " + (cur?cur.label:"this asset") + "?", cur?String(cur.value):"");
+      var cur = (D.owned||[]).filter(function(x){ return x.id===id; })[0] || {};
+      var label = prompt("Name", cur.label || "");
+      if(label===null) return;
+      var v = prompt("Value", cur.value!=null ? String(cur.value) : "");
       if(v===null) return;
       var n = Number(String(v).replace(/[^0-9.\-]/g,""));
       if(!isFinite(n)){ alert("That is not a number."); return; }
+      var note = prompt("Note (leave blank for none)", cur.note || "");
+      if(note===null) return;
       b.disabled = true;
       var r = await sb.from("manual_assets")
-        .update({ value:n, valued_on:new Date().toISOString().slice(0,10), updated_at:new Date().toISOString() })
+        .update({ label:label, value:n, note: note.trim() ? note.trim() : null,
+                  valued_on:new Date().toISOString().slice(0,10),
+                  updated_at:new Date().toISOString() })
         .eq("id", id);
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
+
+  Array.prototype.forEach.call(el.querySelectorAll("[data-adel]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-adel");
+      var cur = (D.owned||[]).filter(function(x){ return x.id===id; })[0] || {};
+      if(!confirm("Remove " + (cur.label||"this asset") + " from net worth?")) return;
+      b.disabled = true;
+      var r = await sb.from("manual_assets").update({ is_active:false }).eq("id", id);
       if(r.error) alert(r.error.message);
       await refresh();
     };
