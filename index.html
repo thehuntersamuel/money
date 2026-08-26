@@ -684,7 +684,6 @@ var trendState=null;
 /* Presets first, shortest to longest, then YTD and All. The selected range
    scopes every chart and stat below it, so the numbers always agree. */
 var RANGES = [
-  { key:"1d",   label:"1D",   days:1 },
   { key:"7d",   label:"7D",   days:7 },
   { key:"30d",  label:"30D",  days:30 },
   { key:"60d",  label:"60D",  days:60 },
@@ -696,7 +695,12 @@ var RANGES = [
 ];
 function rangeDef(){
   var k=D.range||"90d";
-  return RANGES.filter(function(r){return r.key===k;})[0] || RANGES[4];
+  var hit=RANGES.filter(function(r){return r.key===k;})[0];
+  if(hit) return hit;
+  /* Fall back by KEY, never by index. A positional default silently becomes a
+     different range the moment a preset is added or removed, and a stale
+     saved preference (an old "1d") lands here. */
+  return RANGES.filter(function(r){return r.key==="90d";})[0] || RANGES[0];
 }
 /* Inclusive [from,to] as YYYY-MM-DD strings, computed in local time so "today"
    means the user's today, not UTC's. */
