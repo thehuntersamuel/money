@@ -461,6 +461,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
       <section class="card" style="margin-top:18px">
         <header class="card-head"><h2 class="card-title">Rules</h2>
           <div class="card-sub">Merchants filed automatically, every sync</div></header>
+        <div id="recurring-body" style="margin-bottom:16px"></div>
         <div id="rules-body"></div>
         <div id="buckets-body" style="margin-top:16px"></div>
       </section>
@@ -604,6 +605,7 @@ async function loadAll(){
     dmerch:    function(){ return q("v_daily_merchant", {order:{col:"day",asc:true}}); },
     invhist:   function(){ return q("v_investment_history", {order:{col:"day",asc:true}}); },
     owned:     function(){ return q("v_manual_assets", {order:{col:"value",asc:false}}); },
+    recurring: function(){ return q("v_recurring"); },
     items:     function(){ return sb.from("plaid_items")
                   .select("id, institution_name, status, last_synced_at, entity_id, granted_products")
                   .then(function(r){ return r.data||[]; }); },
@@ -999,7 +1001,7 @@ function renderOverview(){
   renderRangeRow();
   renderWall(); renderSeg(); renderTiles(); renderTrend(); renderFlow();
   renderPersonalOnly();
-  renderOwned(); renderEntities(); renderBuckets();
+  renderOwned(); renderEntities(); renderBuckets(); renderRecurring();
   renderSpend(); renderMerchants(); renderHealth(); renderDebt(); renderAttention();
 }
 
@@ -1025,6 +1027,54 @@ function groupTest(key){
 /* Anything the named groups miss still has to be reachable. */
 function inAnyNamedGroup(a){
   return ACCT_GROUPS.some(function(g){ return g.key!=="all" && g.test(a); });
+}
+
+/* ---------- render: recurring charges ---------- */
+/* eFax billed $50 a month for thirteen months against a single fax because
+   nothing in here was watching for the shape of a subscription. This is that
+   watch. "Last charged" is the column that matters: a charge that quietly
+   stopped and a charge that never will are both worth seeing. */
+function renderRecurring(){
+  var el = $("recurring-body"); if(!el) return;
+  var rows = (D.recurring || []).filter(function(r){
+    return D.mode === "all" || r.entity_slug === D.mode;
+  });
+
+  var live = rows.filter(function(r){ return !r.looks_stopped; });
+  var yearly = live.reduce(function(n,r){ return n + Number(r.annualised||0); }, 0);
+
+  var h = '<section class="card"><header class="card-head">'
+        + '<h2 class="card-title">Recurring charges</h2>'
+        + '<div class="card-sub">'
+        + (rows.length ? fmt(yearly)+'/yr across '+live.length+' active · suppliers and transfers excluded'
+                       : 'Nothing repeating yet')
+        + '</div></header>';
+
+  if(!rows.length){
+    h += '<div class="empty">No charge has repeated in at least 4 of the last 12 months.</div>';
+  } else {
+    h += '<div class="table-wrap"><table><thead><tr>'
+      +  '<th>Merchant</th><th>Entity</th><th>Months</th>'
+      +  '<th style="text-align:right">Typical</th><th style="text-align:right">Per year</th>'
+      +  '<th>Last charged</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      var stopped = !!r.looks_stopped;
+      h += '<tr'+(stopped?' style="opacity:.55"':'')+'>'
+        +  '<td>'+esc(r.merchant)+'</td>'
+        +  '<td><span class="pill entity-'+(r.entity_slug==="personal"?"personal":"business")+'">'
+        +  esc(r.entity_name)+'</span></td>'
+        +  '<td class="small muted">'+r.months_seen+' of 12</td>'
+        +  '<td class="mono" style="text-align:right">'+fmt(Number(r.typical_amount))+'</td>'
+        +  '<td class="mono" style="text-align:right'+(stopped?'':';color:var(--text)')+'">'
+        +  fmt(Number(r.annualised))+'</td>'
+        +  '<td class="small">'+shortDate(r.last_charged)
+        +  (stopped ? ' <span class="muted">· stopped</span>' : '')
+        +  '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '</section>';
+  el.innerHTML = h;
 }
 
 /* ---------- render: entity + bucket names ---------- */
