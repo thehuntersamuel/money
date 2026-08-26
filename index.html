@@ -374,7 +374,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 
       <div class="grid cols-2" style="margin-bottom:12px">
         <section class="card">
-          <header class="card-head"><h2 class="card-title">Net worth over time</h2><div class="card-sub" id="trend-sub"></div></header>
+          <header class="card-head"><h2 class="card-title">Cash on hand over time</h2><div class="card-sub" id="trend-sub"></div></header>
           <div class="chart"><svg id="trend" viewBox="0 0 720 200"></svg>
             <div class="legend" id="trend-legend" style="margin-top:8px"></div>
             <div class="tooltip" id="trend-tip" style="display:none"></div>
@@ -592,6 +592,7 @@ async function loadAll(){
   var sources = {
     wall:      function(){ return q("v_net_worth_by_entity", {order:{col:"sort_order",asc:true}}); },
     hist:      function(){ return q("v_net_worth_history", {order:{col:"captured_on",asc:true}}); },
+    cashhist:  function(){ return q("v_cash_history", {order:{col:"day",asc:true}}); },
     cashflow:  function(){ return q("v_monthly_cashflow"); },
     spend:     function(){ return q("v_monthly_spend"); },
     health:    function(){ return q("v_health_spend"); },
@@ -768,28 +769,49 @@ function colLabel(key, grain){
   return (d.getMonth()+1)+"/"+d.getDate();
 }
 
-/* ---------- net worth over time ---------- */
+/* ---------- cash on hand over time ---------- */
+/* This panel used to plot net worth, and after the relink cascaded away every
+   balance snapshot it had exactly ONE point to plot, so it just said "no
+   history". Cash is different: every movement is in the transaction ledger, so
+   the whole two years is rebuildable and v_cash_history does exactly that.
+
+   Cash only, not cash-and-debt. Ecom Pros holds $262k in cash against $382 of
+   card balance; on one shared dollar axis the debt line is pinned to the floor
+   and tells you nothing, and giving it its own axis would be a dual-axis chart,
+   which lies about crossings. Debt has its own board further down the page.
+
+   Net worth itself is deliberately NOT reconstructed here: the investment
+   accounts carry no transactions, so their past cannot be derived, and dragging
+   today's balance backwards would draw a flat line that never happened. */
 function renderTrend(){
   var svg=$("trend"), sub=$("trend-sub");
-  var rows=(D.hist||[]).filter(function(r){
-    return (D.mode==="all"||r.entity_slug===D.mode) && inRange(r.captured_on);
+  var rows=(D.cashhist||[]).filter(function(r){
+    return (D.mode==="all"||r.entity_slug===D.mode) && inRange(r.day);
   });
-  var days=[]; var seen={};
-  rows.forEach(function(r){ if(!seen[r.captured_on]){seen[r.captured_on]=1; days.push(r.captured_on);} });
+  var byDay={}, days=[];
+  rows.forEach(function(r){
+    if(byDay[r.day]===undefined){ byDay[r.day]=0; days.push(r.day); }
+    byDay[r.day]+=Number(r.cash||0);
+  });
   days.sort();
-  if(sub) sub.textContent = days.length ? (days.length+" captured day"+(days.length===1?"":"s")) : "";
   if(days.length<2){
+    if(sub) sub.textContent="";
     svg.innerHTML='<text class="axis-label" x="360" y="90" text-anchor="middle">'
-      +(days.length?'Only one day captured so far — the line starts after the next sync.':'No history in this range yet.')+'</text>';
+      +(days.length?'Only one day in this range.':'No history in this range yet.')+'</text>';
     if($("trend-legend")) $("trend-legend").innerHTML="";
     return;
   }
-  function val(d){ return rows.filter(function(r){return r.captured_on===d;})
-                     .reduce(function(s,r){return s+Number(r.net_worth);},0); }
-  var vals=days.map(val);
+  var vals=days.map(function(d){ return byDay[d]; });
+  var first=vals[0], last=vals[vals.length-1], delta=last-first;
+  if(sub) sub.textContent=(delta>=0?"+":"-")+fmt(Math.abs(delta)).replace("-","")
+    +" since "+shortDate(days[0]);
+
   var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
+  /* Cash floors at zero, so anchor the axis there rather than zooming into a
+     band that makes a $200 wobble look like a cliff. */
+  lo=Math.min(lo,0);
   if(lo===hi){ lo-=1; hi+=1; }
-  var pad=(hi-lo)*0.12; lo-=pad; hi+=pad;
+  var pad=(hi-lo)*0.12; hi+=pad;
   var W=720,H=200,p={top:12,right:10,bottom:24,left:52};
   var pw=W-p.left-p.right, ph=H-p.top-p.bottom;
   function X(i){ return p.left + (days.length===1?pw/2:(i/(days.length-1))*pw); }
@@ -802,12 +824,12 @@ function renderTrend(){
   });
   var c=accent();
   var pts=days.map(function(d,i){ return X(i)+","+Y(vals[i]); }).join(" ");
+  s+='<polygon fill="'+c+'" fill-opacity="0.10" points="'
+   + p.left+','+Y(lo)+' '+pts+' '+(X(days.length-1))+','+Y(lo)+'"></polygon>';
   s+='<polyline fill="none" stroke="'+c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="'+pts+'"></polyline>';
-  /* markers only when they will not collide */
   if(days.length<=40) days.forEach(function(d,i){
     s+='<circle cx="'+X(i)+'" cy="'+Y(vals[i])+'" r="3.2" fill="'+c+'" stroke="var(--surface-1)" stroke-width="2"></circle>';
   });
-  /* generous invisible hit areas so the crosshair finds the X, not the 2px line */
   days.forEach(function(d,i){
     var w=pw/days.length;
     s+='<rect x="'+(X(i)-w/2)+'" y="'+p.top+'" width="'+w+'" height="'+ph+'" fill="transparent" '
@@ -818,7 +840,9 @@ function renderTrend(){
   svg.innerHTML=s;
   wireTip(svg, $("trend-tip"), c);
   if($("trend-legend")) $("trend-legend").innerHTML =
-    '<span><i class="dot" style="background:'+c+'"></i>'+esc(D.mode==="all"?"Net worth":(entName(D.mode)+" net worth"))+'</span>';
+    '<span><i class="dot" style="background:'+c+'"></i>'
+    + esc(D.mode==="all"?"Cash on hand":(entName(D.mode)+" cash on hand"))
+    + '</span><span class="muted">Rebuilt from the transaction ledger</span>';
 }
 function entName(slug){
   var e=D.entities.filter(function(x){return x.entity_slug===slug;})[0];
