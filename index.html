@@ -1998,12 +1998,20 @@ function renderInvChart(){
   var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
   if(lo===hi){ lo-=1; hi+=1; }
   var pad=(hi-lo)*0.15; lo-=pad; hi+=pad;
-  var W=720,H=210,p={top:14,right:12,bottom:22,left:8};
+  /* Room on the left for money labels. Without them a real 47% drawdown reads
+     as a fall to zero, because the eye assumes the bottom of the box is $0
+     unless something says otherwise. */
+  var W=720,H=210,p={top:14,right:12,bottom:22,left:56};
   var pw=W-p.left-p.right, ph=H-p.top-p.bottom;
   function X(i){ return p.left+(i/(days.length-1))*pw; }
   function Y(v){ return p.top+ph-((v-lo)/(hi-lo))*ph; }
 
   var s="";
+  [lo,(lo+hi)/2,hi].forEach(function(t){
+    var yy=Y(t);
+    s+='<line class="gridline" x1="'+p.left+'" x2="'+(W-p.right)+'" y1="'+yy+'" y2="'+yy+'"></line>'
+     +'<text class="axis-label" x="'+(p.left-8)+'" y="'+(yy+3.5)+'" text-anchor="end">'+fmtK(t)+'</text>';
+  });
   /* the opening value as a baseline, the way Robinhood shows the period start */
   s+='<line x1="'+p.left+'" x2="'+(W-p.right)+'" y1="'+Y(first)+'" y2="'+Y(first)+'" '
    + 'stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4"></line>';
