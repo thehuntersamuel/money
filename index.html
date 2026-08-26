@@ -1040,14 +1040,17 @@ function renderRecurring(){
     return D.mode === "all" || r.entity_slug === D.mode;
   });
 
-  var live = rows.filter(function(r){ return !r.looks_stopped; });
-  var yearly = live.reduce(function(n,r){ return n + Number(r.annualised||0); }, 0);
+  var live    = rows.filter(function(r){ return !r.looks_stopped; });
+  var review  = rows.filter(function(r){ return r.needs_review && !r.looks_stopped; });
+  var yearly  = live.reduce(function(n,r){ return n + Number(r.annualised||0); }, 0);
 
   var h = '<section class="card"><header class="card-head">'
         + '<h2 class="card-title">Recurring charges</h2>'
         + '<div class="card-sub">'
-        + (rows.length ? fmt(yearly)+'/yr across '+live.length+' active · suppliers and transfers excluded'
-                       : 'Nothing repeating yet')
+        + (rows.length
+            ? fmt(yearly)+'/yr across '+live.length+' active · '
+              + (review.length ? review.length+' to review' : 'all reviewed')
+            : 'Nothing repeating yet')
         + '</div></header>';
 
   if(!rows.length){
@@ -1056,25 +1059,81 @@ function renderRecurring(){
     h += '<div class="table-wrap"><table><thead><tr>'
       +  '<th>Merchant</th><th>Entity</th><th>Months</th>'
       +  '<th style="text-align:right">Typical</th><th style="text-align:right">Per year</th>'
-      +  '<th>Last charged</th></tr></thead><tbody>';
+      +  '<th>Last charged</th><th></th></tr></thead><tbody>';
     rows.forEach(function(r){
       var stopped = !!r.looks_stopped;
-      h += '<tr'+(stopped?' style="opacity:.55"':'')+'>'
-        +  '<td>'+esc(r.merchant)+'</td>'
+      var acked   = !!r.is_acked;
+      var hiked   = !!r.price_changed;
+      var key     = encodeURIComponent(r.merchant)+"|"+r.entity_slug;
+
+      var state = stopped ? '<span class="muted">· stopped</span>'
+                : hiked   ? '<span style="color:var(--warning)">· price changed</span>'
+                : acked   ? '<span class="muted">· on purpose</span>'
+                : '';
+
+      h += '<tr'+(stopped||(acked&&!hiked)?' style="opacity:.55"':'')+'>'
+        +  '<td>'+esc(r.merchant)
+        +  (acked && r.ack_note ? '<div class="small muted">'+esc(r.ack_note)+'</div>' : '')
+        +  '</td>'
         +  '<td><span class="pill entity-'+(r.entity_slug==="personal"?"personal":"business")+'">'
         +  esc(r.entity_name)+'</span></td>'
         +  '<td class="small muted">'+r.months_seen+' of 12</td>'
-        +  '<td class="mono" style="text-align:right">'+fmt(Number(r.typical_amount))+'</td>'
-        +  '<td class="mono" style="text-align:right'+(stopped?'':';color:var(--text)')+'">'
-        +  fmt(Number(r.annualised))+'</td>'
-        +  '<td class="small">'+shortDate(r.last_charged)
-        +  (stopped ? ' <span class="muted">· stopped</span>' : '')
+        +  '<td class="mono" style="text-align:right">'+fmt(Number(r.typical_amount))
+        +  (hiked ? '<div class="small" style="color:var(--warning)">was '
+                    +fmt(Number(r.acked_amount))+'</div>' : '')
+        +  '</td>'
+        +  '<td class="mono" style="text-align:right">'+fmt(Number(r.annualised))+'</td>'
+        +  '<td class="small">'+shortDate(r.last_charged)+' '+state+'</td>'
+        +  '<td style="text-align:right">'
+        +  (stopped ? ''
+             : acked && !hiked
+               ? '<button class="btn" data-unack="'+key+'" style="padding:4px 10px;font-size:12.5px">Unmark</button>'
+               : '<button class="btn" data-ack="'+key+'" style="padding:4px 10px;font-size:12.5px">'
+                 + (hiked ? 'Approve new price' : 'On purpose') + '</button>')
         +  '</td></tr>';
     });
     h += '</tbody></table></div>';
   }
   h += '</section>';
   el.innerHTML = h;
+
+  function parseKey(k){
+    var i = k.lastIndexOf("|");
+    return { merchant: decodeURIComponent(k.slice(0,i)), entity: k.slice(i+1) };
+  }
+
+  Array.prototype.forEach.call(el.querySelectorAll("[data-ack]"), function(b){
+    b.onclick = async function(){
+      var k = parseKey(b.getAttribute("data-ack"));
+      var row = (D.recurring||[]).filter(function(x){
+        return x.merchant===k.merchant && x.entity_slug===k.entity; })[0] || {};
+      var note = prompt("Anything to remember about " + k.merchant + "? (optional)",
+                        row.ack_note || "");
+      if(note===null) return;
+      b.disabled = true;
+      /* The amount is stored with the approval on purpose: this approves the
+         charge Hunter just looked at, not whatever it becomes later. */
+      var r = await sb.from("recurring_ack").upsert({
+        merchant: k.merchant, entity_slug: k.entity,
+        acked_amount: Number(row.typical_amount || 0),
+        note: note.trim() ? note.trim() : null,
+        acked_at: new Date().toISOString()
+      });
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
+
+  Array.prototype.forEach.call(el.querySelectorAll("[data-unack]"), function(b){
+    b.onclick = async function(){
+      var k = parseKey(b.getAttribute("data-unack"));
+      b.disabled = true;
+      var r = await sb.from("recurring_ack").delete()
+        .eq("merchant", k.merchant).eq("entity_slug", k.entity);
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
 }
 
 /* ---------- render: entity + bucket names ---------- */
