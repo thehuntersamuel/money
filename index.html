@@ -480,6 +480,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 
     <!-- Assets tab: things owned outright. No bank feed behind any of it. -->
     <div data-pane="trade" style="display:none">
+      <div id="book-seg" class="seg" role="group" aria-label="Paper book" style="margin-bottom:12px"></div>
       <div class="grid metric-grid-4" style="margin-bottom:12px" id="paper-tiles"></div>
       <section class="card" style="margin-bottom:16px">
         <header class="card-head">
@@ -649,7 +650,7 @@ $("signout").onclick = async function(){ await sb.auth.signOut(); location.hash=
 $("password").addEventListener("keydown", function(e){ if(e.key==="Enter") $("signin").click(); });
 
 /* ---------- state ---------- */
-var D = { entities:[], mode:"personal" };
+var D = { entities:[], mode:"personal", book:null };
 
 /* PostgREST caps a response at 1000 rows. The daily rollups were fetched in
    ascending date order with no limit, so once two years of history landed they
@@ -704,7 +705,7 @@ async function loadAll(){
     session:   function(){ return q("market_session"); },
     watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
     trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
-    paper:     function(){ return q("v_paper_account"); },
+    books:     function(){ return q("v_paper_books", {order:{col:"sort_order",asc:true}}); },
     capital:   function(){ return q("v_deployable_capital"); },
     cashflow:  function(){ return q("v_monthly_cashflow"); },
     spend:     function(){ return q("v_monthly_spend"); },
@@ -2220,41 +2221,65 @@ function wireRowActions(root, rows){
 }
 
 function renderTrade(){
-  var acct = (D.paper||[])[0] || {};
-  var cap  = (D.capital||[])[0] || {};
-  var trades = D.trades || [];
-  var open   = trades.filter(function(t){ return t.status==="open"; });
-  var closed = trades.filter(function(t){ return t.status==="closed"; });
+  var books = D.books || [];
+  /* Two books, two different kinds of money. Blending them into one stake was
+     the same mistake the Investments tab used to make: the Roth is capacity you
+     can reposition but never spend, Robinhood Savings is capacity you can do
+     either with. Keeping them apart is the point. */
+  if(books.length && (!D.book || !books.filter(function(x){return x.book_id===D.book;}).length)){
+    D.book = books[0].book_id;
+  }
+  var bk = books.filter(function(x){ return x.book_id===D.book; })[0] || {};
+
+  var seg=$("book-seg");
+  if(seg){
+    seg.innerHTML = books.map(function(x){
+      return '<button data-book="'+esc(x.book_id)+'" aria-pressed="'+(x.book_id===D.book)+'">'
+        + esc(x.label)
+        + ' <span class="small muted">'+esc(fmt(Number(x.stake||0)))+'</span>'
+        + (x.n_open ? ' <span class="pill">'+x.n_open+'</span>' : '')
+        + '</button>';
+    }).join("");
+    Array.prototype.forEach.call(seg.querySelectorAll("[data-book]"), function(btn){
+      btn.onclick=function(){ D.book = btn.getAttribute("data-book"); renderTrade(); };
+    });
+  }
+
+  var all    = (D.trades||[]).filter(function(t){ return t.book_id === D.book; });
+  var open   = all.filter(function(t){ return t.status==="open"; });
+  var closed = all.filter(function(t){ return t.status==="closed"; });
 
   var tiles=$("paper-tiles");
   if(tiles){
-    var eq = Number(acct.equity||0), ret = acct.return_pct;
-    var dep = Number(acct.pct_deployed||0);
+    var dep = Number(bk.pct_deployed||0), ret = bk.return_pct;
+    var invested = Number(bk.securities||0) > 0
+      ? fmt(Number(bk.securities))+" already invested"
+      : "all of it in cash";
     tiles.innerHTML =
-      paperTile("Paper equity", fmt2(eq),
-        acct.tracks_real_capital
-          ? "stake tracks your real "+fmt(Number(acct.starting_cash||0))
-          : "started at "+fmt(Number(acct.starting_cash||0)))
-    + paperTile("Open P&L", signed(acct.unrealized_pnl||0),
-        (acct.n_open||0)+" open position"+(Number(acct.n_open)===1?"":"s"),
-        pnlColor(acct.unrealized_pnl||0))
-    + paperTile("Realized", signed(acct.realized_pnl||0),
-        (acct.n_closed||0)+" closed", pnlColor(acct.realized_pnl||0))
-    + paperTile("Buying power", fmt2(Number(acct.buying_power||0)),
-        (acct.n_open ? dep.toFixed(0)+"% of the stake committed"
-                     : (ret==null?"nothing committed":((Number(ret)>=0?"+":"")+Number(ret).toFixed(2)+"% since start"))),
-        /* Amber past two thirds. Sizing is the thing paper trading is
-           actually for, so the tile has to say something before the loss does. */
+      paperTile("Book equity", fmt2(Number(bk.equity||0)),
+        "stake is "+esc(bk.account_name||"the account")+" ··"+esc(bk.mask||""))
+    + paperTile("Open P&L", signed(bk.unrealized_pnl||0),
+        (bk.n_open||0)+" open position"+(Number(bk.n_open)===1?"":"s"),
+        pnlColor(bk.unrealized_pnl||0))
+    + paperTile("Realized", signed(bk.realized_pnl||0),
+        (bk.n_closed||0)+" closed", pnlColor(bk.realized_pnl||0))
+    + paperTile("Buying power", fmt2(Number(bk.buying_power||0)),
+        bk.n_open ? dep.toFixed(0)+"% of the book committed" : invested,
+        /* Amber past two thirds. Sizing is what paper trading is for, so the
+           tile has to speak before the loss does. */
         dep >= 67 ? "var(--warning)" : null);
   }
 
   var capEl=$("paper-cap");
   if(capEl){
-    capEl.innerHTML = cap.deployable==null ? "" :
-      (fmt(Number(acct.robinhood_cash||0))+' Robinhood cash + '+fmt(Number(acct.bank_cash||0))+' bank'
-       + ' &minus; '+fmt(Number(acct.reserve_target||0))+' reserve &minus; cards = <strong>'
-       + fmt(Number(cap.deployable))+'</strong> deployable. '
-       + '<span class="muted">Roth excluded. Simulation only, no orders are placed.</span>');
+    capEl.innerHTML = !bk.book_id ? "" :
+      (esc(fmt(Number(bk.stake||0)))+' in '+esc(bk.account_name||"")+' ··'+esc(bk.mask||"")
+       + ' &mdash; '+esc(fmt(Number(bk.cash||0)))+' cash, '+esc(fmt(Number(bk.securities||0)))+' invested. '
+       + '<span class="muted">'
+       + (bk.capital_role==="retirement"
+            ? 'Retirement: repositionable in here, not spendable out there.'
+            : 'Taxable.')
+       + ' Simulation only, no orders are placed.</span>');
   }
 
   /* ---- open positions ----
@@ -2269,7 +2294,7 @@ function renderTrade(){
         + 'Place one above, or hit Trade on any row of the board.</div></section>';
     } else {
       var h='<section class="card"><header class="card-head"><h2 class="card-title">Open positions</h2>'
-        + '<div class="card-sub">'+open.length+' open · '+signed(acct.unrealized_pnl||0)+'</div></header>'
+        + '<div class="card-sub">'+open.length+' open · '+signed(bk.unrealized_pnl||0)+'</div></header>'
         + '<div class="table-wrap"><table><thead><tr>'
         + '<th>Position</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th>'
         + '<th class="num">P&amp;L</th><th class="num">Days</th><th>Flags</th><th></th></tr></thead><tbody>';
@@ -2597,18 +2622,20 @@ function wireTrade(){
     /* The point of tying the stake to real capital is that the sim refuses
        what the bank would refuse. Without this the board happily lets him
        practise $50k positions on $11.8k and learn nothing about sizing. */
-    var acct = (D.paper||[])[0] || {};
-    var cost = qty * entry, bp = Number(acct.buying_power||0);
-    if(acct.buying_power != null && cost > bp){
+    var bk = (D.books||[]).filter(function(x){ return x.book_id===D.book; })[0] || {};
+    if(!bk.book_id){ msg.textContent="Pick a book first."; return; }
+    var cost = qty * entry, bp = Number(bk.buying_power||0);
+    if(bk.buying_power != null && cost > bp){
       msg.innerHTML = '<span style="color:var(--danger)">'+esc(fmt2(cost))
-        + ' is more than your '+esc(fmt2(bp))+' of buying power.</span>'
-        + ' <span class="muted">That is real deployable capital, not a made-up stake.</span>';
+        + ' is more than the '+esc(fmt2(bp))+' in '+esc(bk.label)+'.</span>'
+        + ' <span class="muted">That is the real account balance, not a made-up stake.</span>';
       return;
     }
     place.disabled=true; msg.textContent="Placing…";
     if(!qt){ await sb.from("watchlist").insert({ symbol: sym });
              try{ await fnCall("quotes-refresh",{symbols:[sym]}); }catch(e){} }
     var r=await sb.from("trades").insert({
+      book_id: bk.book_id,
       symbol:sym, direction:$("tk-dir").value, horizon:$("tk-hz").value,
       qty:qty, entry_price:entry, target_price:target, stop_price:stop,
       thesis: thesis || null
