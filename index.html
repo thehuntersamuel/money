@@ -311,7 +311,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
   .metric-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .nav {
     position: fixed; left: 0; right: 0; bottom: 0; margin: 0; z-index: 100;
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0;
     background: var(--surface-1); border-top: 1px solid var(--border);
   }
   .nav a { text-align: center; padding: 12px 4px; border-radius: 0; font-size: 11px; }
@@ -330,7 +330,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
     <nav class="nav" id="nav" style="display:none">
       <a href="#overview" data-tab="overview" data-active="true">Overview</a>
       <a href="#accounts" data-tab="accounts">Accounts</a>
-      <a href="#investments" data-tab="investments">Investments</a><a href="#transactions" data-tab="transactions">Transactions</a>
+      <a href="#investments" data-tab="investments">Investments</a><a href="#assets" data-tab="assets">Assets</a><a href="#transactions" data-tab="transactions">Transactions</a>
       <a href="#connect" data-tab="connect">Connect</a>
     </nav>
     <a id="signout" class="text-button" style="cursor:pointer;display:none">Sign out</a>
@@ -426,6 +426,9 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 
     <!-- Accounts tab -->
     <div data-pane="accounts" style="display:none"><div id="accounts-body"></div></div>
+
+    <!-- Assets tab: things owned outright. No bank feed behind any of it. -->
+    <div data-pane="assets" style="display:none"><div id="owned-body"></div></div>
 
     <!-- Transactions tab -->
     <div data-pane="investments" style="display:none">
@@ -601,7 +604,8 @@ async function loadAll(){
     q("v_daily_flow", {order:{col:"day",asc:true}}),
     q("v_daily_bucket", {order:{col:"day",asc:true}}),
     q("v_daily_merchant", {order:{col:"day",asc:true}}),
-    q("v_investment_history", {order:{col:"day",asc:true}})
+    q("v_investment_history", {order:{col:"day",asc:true}}),
+    q("v_manual_assets", {order:{col:"value",asc:false}})
   ]);
   D.wall=res[0]; D.hist=res[1]; D.cashflow=res[2]; D.spend=res[3]; D.health=res[4];
   D.goals=res[5]; D.debt=res[6]; D.attention=res[7]; D.accounts=res[8]; D.tx=res[9];
@@ -1011,6 +1015,7 @@ function renderOverview(){
   renderRangeRow();
   renderWall(); renderSeg(); renderTiles(); renderTrend(); renderFlow();
   renderPersonalOnly();
+  renderOwned();
   renderSpend(); renderMerchants(); renderHealth(); renderGoal(); renderDebt(); renderAttention();
 }
 
@@ -1036,6 +1041,90 @@ function groupTest(key){
 /* Anything the named groups miss still has to be reachable. */
 function inAnyNamedGroup(a){
   return ACCT_GROUPS.some(function(g){ return g.key!=="all" && g.test(a); });
+}
+
+/* ---------- render: owned outright ---------- */
+/* Manual assets are inside the net worth total, so they need somewhere to be
+   looked at and corrected. Kept as their own card rather than mixed into the
+   accounts table on purpose: everything in that table is a live bank balance
+   with Plaid row handlers behind it, and a number typed by hand should never
+   be one careless click away from being treated like one. */
+var KIND_LABEL = { vehicle:"Vehicle", property:"Property", equipment:"Equipment", other:"Other" };
+var KIND_ORDER = ["property","vehicle","equipment","other"];
+
+function renderOwned(){
+  var el = $("owned-body");
+  if(!el) return;
+  var rows = (D.owned || []).filter(function(o){
+    return D.mode === "all" || o.entity_slug === D.mode;
+  });
+
+  var total = rows.reduce(function(n,o){ return n + Number(o.value||0); }, 0);
+  var h = '<section class="card"><header class="card-head">'
+        + '<h2 class="card-title">Owned outright</h2>'
+        + '<div class="card-sub">'
+        + (rows.length ? fmt(total)+' across '+rows.length+' asset'+(rows.length===1?'':'s')+' · counts toward net worth'
+                       : 'Not from a bank. Counts toward net worth.')
+        + '</div></header>';
+
+  if(!rows.length){
+    h += '<div class="empty">Nothing recorded. Add anything you own free and clear '
+      +  'so net worth is not understated.</div>';
+  } else {
+    h += '<div style="overflow-x:auto"><table class="table"><thead><tr>'
+      +  '<th>Asset</th><th>Type</th><th>Entity</th><th>Valued</th><th style="text-align:right">Value</th><th></th>'
+      +  '</tr></thead><tbody>';
+    rows.forEach(function(o){
+      var stale = Number(o.days_since_valued) > 365;
+      h += '<tr><td>'+esc(o.label)+(o.note?'<div class="small muted">'+esc(o.note)+'</div>':'')+'</td>'
+        +  '<td class="small">'+esc(KIND_LABEL[o.kind] || o.kind)+'</td>'
+        +  '<td><span class="pill entity-'+(o.entity_slug==="personal"?"personal":"business")+'">'
+        +  esc(o.entity_name)+'</span></td>'
+        +  '<td class="small'+(stale?'" style="color:var(--warning)':'')+'">'+shortDate(o.valued_on)
+        +  (stale?' · stale':'')+'</td>'
+        +  '<td class="mono" style="text-align:right">'+fmt(Number(o.value))+'</td>'
+        +  '<td style="text-align:right"><button class="btn" data-reval="'+o.id+'" '
+        +  'style="padding:4px 10px;font-size:12.5px">Update value</button></td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '<div style="padding:12px 16px"><button class="btn" id="owned-add">Add asset</button></div></section>';
+  el.innerHTML = h;
+
+  Array.prototype.forEach.call(el.querySelectorAll("[data-reval]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-reval");
+      var cur = (D.owned||[]).filter(function(x){ return x.id===id; })[0];
+      var v = prompt("Current value of " + (cur?cur.label:"this asset") + "?", cur?String(cur.value):"");
+      if(v===null) return;
+      var n = Number(String(v).replace(/[^0-9.\-]/g,""));
+      if(!isFinite(n)){ alert("That is not a number."); return; }
+      b.disabled = true;
+      var r = await sb.from("manual_assets")
+        .update({ value:n, valued_on:new Date().toISOString().slice(0,10), updated_at:new Date().toISOString() })
+        .eq("id", id);
+      if(r.error) alert(r.error.message);
+      await refresh();
+    };
+  });
+
+  var add = $("owned-add");
+  if(add) add.onclick = async function(){
+    var label = prompt("What is it? (e.g. house on Oak St, 2020 Camaro 2SS)");
+    if(!label) return;
+    var kind = prompt("Type: " + KIND_ORDER.join(", "), "property");
+    kind = KIND_ORDER.indexOf(String(kind||"").toLowerCase()) >= 0
+      ? String(kind).toLowerCase() : "other";
+    var v = prompt("What is it worth today?");
+    if(v===null) return;
+    var n = Number(String(v).replace(/[^0-9.\-]/g,""));
+    if(!isFinite(n)){ alert("That is not a number."); return; }
+    var ent = D.entities.filter(function(e){ return e.entity_slug === (D.mode==="all"?"personal":D.mode); })[0]
+           || D.entities[0];
+    var r = await sb.from("manual_assets").insert({ entity_id: ent.entity_id, label: label, kind: kind, value: n });
+    if(r.error) alert(r.error.message);
+    await refresh();
+  };
 }
 
 /* ---------- render: accounts ---------- */
