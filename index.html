@@ -55,11 +55,13 @@
   --business-soft: rgba(21,163,92,.10);
   --business-border: rgba(21,163,92,.42);
 
-  /* Money-out bars sit beside money-in in the same chart, so this one is
-     pinned rather than taken from the active entity accent. On the business
-     side the accent IS the brand green, and green-on-green made the two
-     series indistinguishable. Validated against --good: deutan dE 16.8. */
-  --flow-out: #4b7fb5;
+  /* Money out is red on every tab, never the active entity accent: on the
+     business side that accent IS the brand green, and green-on-green made
+     the two series identical. Red beside green is the weakest pair for
+     red-green colourblindness (deutan dE 6.9), so this exact red was
+     picked to maximise that gap, and the chart carries a labelled legend
+     plus fixed in-left / out-right bar order so hue is never the only cue. */
+  --flow-out: #f2635f;
 
   --success: #15a35c;
   --warning: #e3b341;
@@ -395,7 +397,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
             <div class="card-sub" id="merch-total"></div></header>
           <div class="card-body" style="padding:14px 16px" id="merch-bars"></div>
         </section>
-        <section class="card">
+        <section class="card" id="card-health">
           <div class="stripe" style="background:var(--personal)"></div>
           <header class="card-head"><h2 class="card-title">Bodybuilding &amp; health spend</h2><div class="card-sub" id="health-avg"></div></header>
           <div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
@@ -406,8 +408,8 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
         </section>
       </div>
 
-      <div class="grid cols-2">
-        <section class="card">
+      <div class="grid cols-2" id="row-goal">
+        <section class="card" id="card-goal">
           <div class="stripe" style="background:var(--personal)"></div>
           <header class="card-head"><h2 class="card-title">Relocation fund (FL / TX)</h2><div class="card-sub" id="goal-sub"></div></header>
           <div id="goal-body"></div>
@@ -885,6 +887,18 @@ function barList(el, rows, color){
 }
 
 
+/* Bodybuilding spend and the relocation fund belong to Hunter, never to the
+   LLC. Hidden outright on the business side rather than shown empty, so the
+   business view holds nothing personal at all. "All" still shows them,
+   because that view deliberately spans both sides of the wall. */
+function renderPersonalOnly(){
+  var show = D.mode !== "ecom-pros-llc";
+  var h=$("card-health"), g=$("card-goal"), row=$("row-goal");
+  if(h) h.style.display = show ? "" : "none";
+  if(g) g.style.display = show ? "" : "none";
+  if(row) row.style.gridTemplateColumns = show ? "" : "minmax(0, 1fr)";
+}
+
 function renderHealth(){
   var months=[]; var seen={};
   D.health.forEach(function(r){ if(!seen[r.month]){seen[r.month]=1; months.push(r.month);} });
@@ -958,6 +972,7 @@ function renderAttention(){
 function renderOverview(){
   renderRangeRow();
   renderWall(); renderSeg(); renderTiles(); renderTrend(); renderFlow();
+  renderPersonalOnly();
   renderSpend(); renderMerchants(); renderHealth(); renderGoal(); renderDebt(); renderAttention();
 }
 
