@@ -631,7 +631,11 @@ function renderWall(){
       + '<div class="wall-header"><span class="entity-label">'+esc(e.entity_name)+'</span>'
       + '<span class="micro-label">'+micro+'</span></div>'
       + '<div class="wall-net-worth"'+(Number(e.net_worth)<0?' style="color:var(--danger)"':'')+'>'+fmt(Number(e.net_worth))+'</div>'
-      + '<div class="wall-meta">'+fmtK(Number(e.assets))+' assets<span>\u00b7</span>'+fmtK(Number(e.liabilities))+' debt<span>\u00b7</span>'+e.account_count+' account'+(Number(e.account_count)===1?'':'s')+'</div>'
+      + '<div class="wall-meta">'+fmtK(Number(e.assets))+' assets<span>\u00b7</span>'+fmtK(Number(e.liabilities))+' debt<span>\u00b7</span>'+e.account_count+' account'+(Number(e.account_count)===1?'':'s')
+        /* Manual assets are inside the assets figure but have no account row to
+           click, so name them here. Unlabelled they read as a maths error. */
+        + (Number(e.manual_assets)>0 ? '<span>\u00b7</span>'+fmtK(Number(e.manual_assets))+' owned outright' : '')
+        + '</div>'
       + '</button>';
   });
   $("wall").innerHTML = h;
