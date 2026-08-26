@@ -541,13 +541,44 @@ $("password").addEventListener("keydown", function(e){ if(e.key==="Enter") $("si
 /* ---------- state ---------- */
 var D = { entities:[], mode:"personal" };
 
+/* PostgREST caps a response at 1000 rows. The daily rollups were fetched in
+   ascending date order with no limit, so once two years of history landed they
+   crossed that cap and the browser silently received only the OLDEST 1000 rows
+   -- every recent day was missing and "Where it went" and "Top merchants" read
+   as empty. Page through instead of trusting a single request, so the row count
+   growing over time can never quietly truncate a chart again. */
+var PAGE_ROWS = 1000;
+var MAX_PAGES = 40;
+
 async function q(view, opts){
-  var qy = sb.from(view).select("*");
-  if(opts && opts.order) qy = qy.order(opts.order.col, {ascending: !!opts.order.asc});
-  if(opts && opts.limit) qy = qy.limit(opts.limit);
-  var r = await qy;
-  if(r.error){ console.error(view, r.error.message); return []; }
-  return r.data || [];
+  var order = opts && opts.order;
+  var hardLimit = opts && opts.limit;
+
+  function base(){
+    var qy = sb.from(view).select("*");
+    if(order) qy = qy.order(order.col, {ascending: !!order.asc});
+    return qy;
+  }
+
+  // An explicit small limit is a deliberate "just the top N" -- honour it.
+  if(hardLimit && hardLimit <= PAGE_ROWS){
+    var one = await base().limit(hardLimit);
+    if(one.error){ console.error(view, one.error.message); return []; }
+    return one.data || [];
+  }
+
+  var out = [];
+  for(var page = 0; page < MAX_PAGES; page++){
+    var from = page * PAGE_ROWS;
+    var r = await base().range(from, from + PAGE_ROWS - 1);
+    if(r.error){ console.error(view, r.error.message); return out; }
+    var rows = r.data || [];
+    out = out.concat(rows);
+    if(rows.length < PAGE_ROWS) return out;
+    if(hardLimit && out.length >= hardLimit) return out.slice(0, hardLimit);
+  }
+  console.warn(view + ": stopped at " + out.length + " rows (" + MAX_PAGES + " pages)");
+  return out;
 }
 
 async function loadAll(){
