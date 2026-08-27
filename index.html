@@ -116,10 +116,15 @@ a { color: inherit; }
 
 /* ---- top bar ---- */
 .topbar { display: flex; align-items: center; gap: 20px; padding: 6px 0 16px; }
+/* The brand is a real <button> because on a phone it opens the nav drawer.
+   On a wide screen there is no drawer to open, so it sits inert and keeps a
+   default cursor rather than advertising a click that does nothing. */
 .brand {
   display: flex; align-items: center; gap: 9px;
   font-size: 12px; font-weight: 750; letter-spacing: .1em;
   color: var(--text); white-space: nowrap;
+  background: none; border: 0; padding: 0; margin: 0;
+  font-family: inherit; cursor: default; text-align: left;
 }
 .brand-mark { width: 24px; height: 24px; display: block; flex: none; }
 .brand .brand-word > span { color: var(--text-muted); font-weight: 500; }
@@ -388,20 +393,62 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 .login-mark { width: 56px; height: 56px; display: block; margin: 2px auto 14px; }
 .login-sub { font-size: 12px; color: var(--text-muted); margin: 6px 0 4px; }
 
-/* ---- mobile ---- */
+/* ---- mobile: the nav drawer ---- */
+/* Off-canvas by transform rather than display, so it slides instead of
+   appearing, and so the links stay in the tab order only when it is open
+   (inert handles that part from JS). */
+.scrim {
+  position: fixed; inset: 0; z-index: 110; background: rgba(0,0,0,.55);
+  opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
+
 @media (max-width: 760px) {
-  .shell { padding: 10px 10px 84px; }
+  .shell { padding: 10px 10px 40px; }
   .cols-3, .cols-2, .cols-4 { grid-template-columns: minmax(0, 1fr); }
   .metric-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-  .nav {
-    position: fixed; left: 0; right: 0; bottom: 0; margin: 0; z-index: 100;
-    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0;
-    background: var(--surface-1); border-top: 1px solid var(--border);
+
+  /* The logo is the handle, so give it a tap target and a pressed state. */
+  .brand { cursor: pointer; }
+  .brand-mark {
+    width: 30px; height: 30px; padding: 3px; box-sizing: border-box;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--surface-2); transition: background .15s ease, border-color .15s ease;
   }
-  .nav a { text-align: center; padding: 12px 4px; border-radius: 0; font-size: 11px; }
+  .brand[aria-expanded="true"] .brand-mark {
+    background: var(--surface-3); border-color: var(--text-muted);
+  }
+
+  .nav {
+    position: fixed; top: 0; left: 0; bottom: 0; margin: 0; z-index: 120;
+    width: min(76vw, 290px);
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 64px 12px 20px;
+    background: var(--surface-1); border-right: 1px solid var(--border);
+    box-shadow: 18px 0 40px rgba(0,0,0,.45);
+    transform: translateX(-100%);
+    transition: transform .22s cubic-bezier(.2,.7,.3,1);
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  body.drawer-open .nav { transform: none; }
+  .nav a {
+    padding: 13px 12px; border-radius: var(--radius-sm);
+    font-size: 14px; font-weight: 600; color: var(--text-secondary);
+  }
+  .nav a[data-active="true"] { background: var(--surface-3); color: var(--text); }
+  /* Room for the logo button, which stays visible above the open drawer. */
+  .nav::before {
+    content: "MENU"; position: absolute; top: 26px; left: 24px;
+    font-size: 10px; letter-spacing: .16em; color: var(--text-muted); font-weight: 700;
+  }
+  .brand { position: relative; z-index: 130; }
+
   .wall-net-worth { font-size: 30px; }
 }
+/* A drawer left open when the window widens back to desktop would otherwise
+   keep the scrim over the page, since the scrim is not inside the query. */
 @media (min-width: 761px) {
+  body.drawer-open .scrim { opacity: 0; pointer-events: none; }
   .metric-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
 }
 </style>
@@ -410,7 +457,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 <div class="shell">
 
   <header class="topbar">
-    <div class="brand"><img class="brand-mark" src="./icons/favicon-192.png" alt="Pact Finance" width="24" height="24" decoding="async"><span class="brand-word">PACT FINANCE <span>/ HUNTER</span></span></div>
+    <button type="button" class="brand" id="brand-btn" aria-controls="nav" aria-expanded="false" aria-label="Open menu"><img class="brand-mark" src="./icons/favicon-192.png" alt="Pact Finance" width="24" height="24" decoding="async"><span class="brand-word">PACT FINANCE <span>/ HUNTER</span></span></button>
     <nav class="nav" id="nav" style="display:none">
       <a href="#overview" data-tab="overview" data-active="true">Overview</a>
       <a href="#accounts" data-tab="accounts">Accounts</a>
@@ -419,6 +466,7 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
     </nav>
     <a id="signout" class="text-button" style="cursor:pointer;display:none">Sign out</a>
   </header>
+  <div class="scrim" id="scrim"></div>
 
   <!-- ======================= LOGIN ======================= -->
   <div id="login" style="max-width:360px;margin:70px auto">
@@ -2939,6 +2987,49 @@ $("sync").onclick=async function(){
   b.disabled=false; b.textContent="Sync now";
 };
 
+/* ---------- mobile drawer ---------- */
+/* The Pact mark in the top left is the handle. It only opens anything at
+   phone width; above that the drawer does not exist, so the click is a no-op
+   rather than a hidden panel sliding in behind the layout. */
+function drawerAvailable(){
+  return window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+}
+function setDrawer(open){
+  var btn=$("brand-btn"), nav=$("nav");
+  open = !!open && drawerAvailable();
+  document.body.classList.toggle("drawer-open", open);
+  if(btn){
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  }
+  /* Keep the closed drawer out of the tab order, so swiping through the page
+     with a keyboard or screen reader does not land inside a hidden panel. */
+  if(nav){
+    if(drawerAvailable() && !open) nav.setAttribute("inert","");
+    else nav.removeAttribute("inert");
+  }
+}
+function toggleDrawer(){
+  setDrawer(!document.body.classList.contains("drawer-open"));
+}
+function wireDrawer(){
+  var btn=$("brand-btn"), scrim=$("scrim"), nav=$("nav");
+  if(btn) btn.onclick=function(){ if(drawerAvailable()) toggleDrawer(); };
+  if(scrim) scrim.onclick=function(){ setDrawer(false); };
+  if(nav) nav.addEventListener("click", function(e){
+    if(e.target && e.target.closest && e.target.closest("a[data-tab]")) setDrawer(false);
+  });
+  document.addEventListener("keydown", function(e){
+    if(e.key==="Escape") setDrawer(false);
+  });
+  /* Rotating to landscape or widening the window must not leave a scrim
+     stranded over a desktop layout. */
+  window.addEventListener("resize", function(){
+    if(!drawerAvailable()) setDrawer(false); else setDrawer(document.body.classList.contains("drawer-open"));
+  });
+  setDrawer(false);
+}
+
 /* ---------- tabs ---------- */
 function showTab(name){
   Array.prototype.forEach.call(document.querySelectorAll("[data-pane]"), function(p){
@@ -2957,6 +3048,7 @@ function knownTabs(){
 window.addEventListener("hashchange", function(){
   var h=location.hash.replace("#","")||"overview";
   if(knownTabs().indexOf(h)>=0) showTab(h);
+  setDrawer(false);
 });
 
 /* ---------- boot ---------- */
@@ -2973,6 +3065,7 @@ async function boot(){
   $("login").style.display="none";
   $("app").style.display="";
   $("nav").style.display=""; $("signout").style.display="";
+  wireDrawer();
   await refresh();
   wireTrade();
   var h=location.hash.replace("#","")||"overview";
