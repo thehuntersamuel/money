@@ -436,11 +436,9 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
     font-size: 14px; font-weight: 600; color: var(--text-secondary);
   }
   .nav a[data-active="true"] { background: var(--surface-3); color: var(--text); }
-  /* Room for the logo button, which stays visible above the open drawer. */
-  .nav::before {
-    content: "MENU"; position: absolute; top: 26px; left: 24px;
-    font-size: 10px; letter-spacing: .16em; color: var(--text-muted); font-weight: 700;
-  }
+  /* The brand row rides above the open drawer and reads as its header, so the
+     drawer's top padding is there to clear it. A "MENU" label of its own sat
+     directly underneath the wordmark and collided with it. */
   .brand { position: relative; z-index: 130; }
 
   .wall-net-worth { font-size: 30px; }
