@@ -411,10 +411,10 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
   /* The logo is the handle, so give it a tap target and a pressed state.
      It also carries the header on a phone now that the tab strip is gone,
      so it is sized to read as one rather than as a favicon. */
-  .brand { cursor: pointer; font-size: 13.5px; gap: 11px; }
+  .brand { cursor: pointer; font-size: 15px; gap: 12px; }
   .brand-mark {
-    width: 38px; height: 38px; padding: 4px; box-sizing: border-box;
-    border: 1px solid var(--border); border-radius: 9px;
+    width: 44px; height: 44px; padding: 5px; box-sizing: border-box;
+    border: 1px solid var(--border); border-radius: 11px;
     background: var(--surface-2); transition: background .15s ease, border-color .15s ease;
   }
   .brand[aria-expanded="true"] .brand-mark {
@@ -425,7 +425,7 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
     position: fixed; top: 0; left: 0; bottom: 0; margin: 0; z-index: 120;
     width: min(76vw, 290px);
     display: flex; flex-direction: column; gap: 2px;
-    padding: 74px 12px 20px;
+    padding: 84px 12px 20px;
     background: var(--surface-1); border-right: 1px solid var(--border);
     box-shadow: 18px 0 40px rgba(0,0,0,.45);
     transform: translateX(-100%);
