@@ -443,6 +443,17 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
      directly underneath the wordmark and collided with it. */
   .brand { position: relative; z-index: 130; }
 
+  /* With the tab strip gone the header is brand-then-nothing-then-a-word.
+     Push Sign out to the far edge and give it a border so it reads as a
+     control rather than as stray text floating beside the logo. */
+  #signout {
+    margin-left: auto;
+    padding: 9px 14px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text-secondary); font-size: 12.5px; font-weight: 600;
+  }
+  #signout:active { background: var(--surface-3); color: var(--text); }
+
   .wall-net-worth { font-size: 30px; }
 }
 /* At 375px and under the bigger wordmark pushes "Sign out" onto a second
