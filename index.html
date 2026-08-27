@@ -445,6 +445,13 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
 
   .wall-net-worth { font-size: 30px; }
 }
+/* At 375px and under the bigger wordmark pushes "Sign out" onto a second
+   line. The "/ HUNTER" half is the expendable part -- it is his own
+   dashboard, he knows whose it is. */
+@media (max-width: 380px) {
+  .brand .brand-word > span { display: none; }
+  #signout { white-space: nowrap; }
+}
 /* A drawer left open when the window widens back to desktop would otherwise
    keep the scrim over the page, since the scrim is not inside the query. */
 @media (min-width: 761px) {
