@@ -336,6 +336,21 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 .ticket-risk  { grid-template-columns: 1.15fr .8fr .8fr .8fr 1fr 1.05fr; margin-top: 12px; }
 .ticket-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
 .ticket-actions .btn { min-width: 170px; padding: 9px 22px; }
+.trade-preflight {
+  margin-top: 12px; padding: 11px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.preflight-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; margin-bottom:9px; }
+.preflight-title { font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); }
+.preflight-state { font-size:10.5px; color:var(--text-muted); text-align:right; }
+.preflight-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; }
+.preflight-metric { min-width:0; padding:8px 9px; border:1px solid var(--border); border-radius:4px; background:var(--surface-1); }
+.preflight-label { font-size:8.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); }
+.preflight-value { margin-top:4px; font:600 14px/1.2 var(--font-number); color:var(--text); overflow-wrap:anywhere; }
+.preflight-sub { margin-top:3px; font-size:9.5px; color:var(--text-muted); }
+.preflight-danger .preflight-value, .preflight-danger.preflight-state { color:var(--danger); }
+@media (max-width: 900px) { .preflight-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 /* Seven fields divide evenly into neither two nor three columns, so once the
    band wraps something is always left alone on the last row. Symbol takes the
    full width instead: it is the field that benefits most from room, and the
@@ -347,6 +362,8 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 @media (max-width: 620px) {
   .ticket-order, .ticket-risk { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ticket-actions .btn { width: 100%; }
+  .preflight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .preflight-head { align-items:flex-start; }
 }
 /* Four reasoning boxes: two up on a desktop, stacked on a phone. */
 .reasons { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
@@ -359,6 +376,17 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
   font-size: 10.5px; color: var(--text-muted);
 }
 .meta-line b { color: var(--text-secondary); font-weight: 600; }
+.proposal-list { display: grid; gap: 10px; }
+.proposal-card {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2); padding: 12px;
+}
+.proposal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.proposal-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.proposal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-top: 9px; }
+.proposal-evidence { display: flex; gap: 6px 10px; flex-wrap: wrap; margin-top: 9px; }
+.proposal-evidence a { color: var(--personal); text-underline-offset: 2px; }
+@media (max-width: 720px) { .proposal-grid { grid-template-columns: 1fr; } }
 .board-controls {
   display: grid; gap: 10px 12px; align-items: end;
   grid-template-columns: minmax(150px, 1fr) minmax(120px, 160px) auto auto;
@@ -602,6 +630,9 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
             <label class="field num"><span>Max book risk %</span><input id="tk-risk-pct" type="number" step="0.1" min="0.1" max="2" placeholder="1"></label>
             <label class="field"><span>Review date</span><input id="tk-review-date" type="date"></label>
           </div>
+          <div id="trade-preflight" class="trade-preflight" aria-live="polite">
+            <div class="preflight-head"><span class="preflight-title">Position preflight</span><span class="preflight-state">Enter target, stop, and risk to size the trade.</span></div>
+          </div>
           <div class="ticket-actions"><button class="btn primary" id="tk-place">Place</button></div>
         </div>
         <div class="form-note">
@@ -618,6 +649,14 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
           <div class="gate-note">Nothing is placed without a thesis, catalyst, invalidation, evidence, review date, target and stop, and at least 1.5:1 reward to risk &mdash; both as you state it and as your prices actually imply. Planned loss is capped at 2% of the book. Simulation only; no orders are placed.</div>
           <div class="small" id="tk-msg" style="margin-top:10px;min-height:16px"></div>
         </div>
+      </section>
+      <section class="card" style="margin-bottom:16px">
+        <header class="card-head">
+          <h2 class="card-title">Morrow proposals</h2>
+          <div class="card-sub">Current source review, decision history, and conditional setups</div>
+        </header>
+        <div id="morrow-proposals"></div>
+        <p class="small muted" style="margin:10px 0 0">Price can trigger a fresh review, but never a paper trade by itself.</p>
       </section>
       <div id="paper-open" style="margin-bottom:16px"></div>
       <section class="card" style="margin-bottom:16px">
@@ -724,6 +763,13 @@ function fmt(n){ if(n===null||n===undefined||isNaN(n)) return "—"; return (n<0
 function fmt2(n){ if(n===null||n===undefined||isNaN(n)) return "—"; return (n<0?"-":"")+"$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtK(n){ var a=Math.abs(n); var s=n<0?"-":""; if(a>=1e6) return s+"$"+(a/1e6).toFixed(1)+"M"; if(a>=1e4) return s+"$"+Math.round(a/1000)+"k"; if(a>=1000) return s+"$"+(a/1000).toFixed(1)+"k"; return s+"$"+Math.round(a); }
 function esc(s){ var d=document.createElement("div"); d.textContent=s==null?"":String(s); return d.innerHTML; }
+function safeProposalUrl(value){
+  try {
+    var u=new URL(String(value||""));
+    return u.protocol==="https:" && u.hostname && !u.username && !u.password ? u.href : null;
+  }
+  catch(e){ return null; }
+}
 function shortDate(d){ if(!d) return "—"; var dt=new Date(d+"T00:00:00"); return dt.toLocaleDateString("en-US",{month:"short",day:"numeric"}); }
 function monthLabel(d){ var dt=new Date(d+"T00:00:00"); return dt.toLocaleDateString("en-US",{month:"short"}); }
 function ago(iso){ if(!iso) return "never"; var m=Math.round((Date.now()-new Date(iso).getTime())/60000); if(m<1) return "just now"; if(m<60) return m+"m ago"; var h=Math.round(m/60); if(h<24) return h+"h ago"; return Math.round(h/24)+"d ago"; }
@@ -817,6 +863,7 @@ async function loadAll(){
     session:   function(){ return q("market_session"); },
     watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
     trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
+    proposals: function(){ return q("trade_proposals", {order:{col:"updated_at",asc:false}, limit:200}); },
     books:     function(){ return q("v_paper_books", {order:{col:"sort_order",asc:true}}); },
     capital:   function(){ return q("v_deployable_capital"); },
     cashflow:  function(){ return q("v_monthly_cashflow"); },
@@ -2270,6 +2317,119 @@ var TRADE_SETUPS = ["core","swing","catalyst","hedge"];
 var MIN_RR = 1.5;      /* reward-to-risk floor, stated AND implied */
 var MAX_BOOK_RISK = 2; /* percent of book equity that may be put at risk */
 
+/* Pure sizing preview. It never writes a trade and deliberately accepts blank
+   quantity so Hunter can see the maximum safe size before choosing one. */
+function calculateTradePreflight(f, bk, quote){
+  function n(v){
+    if(v === null || v === undefined || String(v).trim() === "") return null;
+    return Number(v);
+  }
+  function rounded(v){ return Math.round(v * 10000) / 10000; }
+  function down4(v){ return Math.floor(v * 10000) / 10000; }
+  function no(reason){ return { ready:false, reason:reason }; }
+
+  var entry = n(f.entry);
+  if(entry === null && quote && quote.price != null) entry = Number(quote.price);
+  var target = n(f.target), stop = n(f.stop), riskPct = n(f.riskPct), qty = n(f.qty);
+  var dir = f.direction === "short" ? "short" : "long";
+
+  if(entry === null || !isFinite(entry) || entry <= 0) return no("Enter a valid entry or use a symbol with a live quote.");
+  if(target === null || stop === null) return no("Enter target and stop to calculate the preflight.");
+  if(!isFinite(target) || target <= 0 || !isFinite(stop) || stop <= 0) return no("Target and stop must be positive numbers.");
+  if(dir === "long" && (target <= entry || stop >= entry)) return no("A long needs target above entry and stop below it.");
+  if(dir === "short" && (target >= entry || stop <= entry)) return no("A short needs target below entry and stop above it.");
+  if(stop === entry) return no("Stop cannot equal entry.");
+  if(riskPct === null || !isFinite(riskPct) || riskPct <= 0) return no("Enter a positive max book risk percentage.");
+  if(riskPct > MAX_BOOK_RISK) return no("Max book risk cannot exceed " + MAX_BOOK_RISK + "%.");
+  if(qty !== null && (!isFinite(qty) || qty <= 0)) return no("Quantity must be a positive number or left blank.");
+  if(!bk) return no("Pick a capital book first.");
+
+  var equity = Number(bk.equity || bk.stake || 0);
+  var buyingPower = Number(bk.buying_power == null ? 0 : bk.buying_power);
+  if(!isFinite(equity) || equity <= 0) return no("The selected book has no usable equity.");
+  if(!isFinite(buyingPower) || buyingPower < 0) return no("The selected book has invalid buying power.");
+
+  var rewardPerShare = Math.abs(target - entry);
+  var riskPerShare = Math.abs(entry - stop);
+  var riskLimit = equity * riskPct / 100;
+  var maxQtyByRisk = riskPerShare > 0 ? riskLimit / riskPerShare : 0;
+  var maxQtyByBuyingPower = entry > 0 ? buyingPower / entry : 0;
+  var maxQty = down4(Math.max(0, Math.min(maxQtyByRisk, maxQtyByBuyingPower)));
+  var hasQty = qty !== null && isFinite(qty) && qty > 0;
+  var capital = hasQty ? qty * entry : null;
+  var plannedLoss = hasQty ? riskPerShare * qty : null;
+  var remainingBuyingPower = capital === null ? null : buyingPower - capital;
+  var overRisk = plannedLoss !== null && plannedLoss > riskLimit;
+  var overBuyingPower = remainingBuyingPower !== null && remainingBuyingPower < 0;
+
+  return {
+    ready:true,
+    entry:rounded(entry),
+    impliedUpsidePct:rounded(rewardPerShare / entry * 100),
+    impliedDownsidePct:rounded(riskPerShare / entry * 100),
+    rewardRisk:rounded(rewardPerShare / riskPerShare),
+    riskLimit:rounded(riskLimit),
+    riskPerShare:rounded(riskPerShare),
+    maxQtyByRisk:down4(maxQtyByRisk),
+    maxQtyByBuyingPower:down4(maxQtyByBuyingPower),
+    maxQty:maxQty,
+    plannedLoss:plannedLoss === null ? null : rounded(plannedLoss),
+    riskUsedPct:plannedLoss === null ? null : rounded(plannedLoss / equity * 100),
+    capitalCommitted:capital === null ? null : rounded(capital),
+    deploymentPct:capital === null ? null : rounded(capital / equity * 100),
+    remainingBuyingPower:remainingBuyingPower === null ? null : rounded(remainingBuyingPower),
+    overRisk:overRisk,
+    overBuyingPower:overBuyingPower,
+    withinLimits:hasQty ? !overRisk && !overBuyingPower : null
+  };
+}
+
+var tradePreflightInputs = ["tk-sym","tk-dir","tk-qty","tk-entry","tk-target","tk-stop","tk-risk-pct"];
+function renderTradePreflight(){
+  var box = $("trade-preflight");
+  if(!box) return;
+  var books = D.books || [];
+  var bk = books.filter(function(x){ return x.book_id === D.book; })[0] || null;
+  var sym = String($("tk-sym").value || "").trim().toUpperCase();
+  var quote = (D.quotes || []).filter(function(x){ return x.symbol === sym; })[0] || null;
+  var r = calculateTradePreflight({
+    direction:$("tk-dir").value, qty:$("tk-qty").value, entry:$("tk-entry").value,
+    target:$("tk-target").value, stop:$("tk-stop").value, riskPct:$("tk-risk-pct").value
+  }, bk, quote);
+
+  var head = '<div class="preflight-head"><span class="preflight-title">Position preflight</span>';
+  if(!r.ready){
+    box.innerHTML = head + '<span class="preflight-state">'+esc(r.reason)+'</span></div>';
+    box.setAttribute("data-ready", "false");
+    return;
+  }
+
+  var overRisk = r.overRisk;
+  var overCash = r.overBuyingPower;
+  var state = r.plannedLoss === null ? "Choose a quantity at or below the safe maximum."
+    : (overRisk || overCash ? "This quantity is over the selected book limit." : "This quantity is within the selected book limits.");
+  function metric(label, value, sub, danger){
+    return '<div class="preflight-metric'+(danger?' preflight-danger':'')+'">'
+      + '<div class="preflight-label">'+esc(label)+'</div>'
+      + '<div class="preflight-value">'+esc(value)+'</div>'
+      + '<div class="preflight-sub">'+esc(sub)+'</div></div>';
+  }
+  var maxQty = String(Number(r.maxQty.toFixed(4)));
+  var grid = metric("Actual R:R", r.rewardRisk.toFixed(2)+":1",
+      "+"+r.impliedUpsidePct.toFixed(2)+"% / -"+r.impliedDownsidePct.toFixed(2)+"%", r.rewardRisk < MIN_RR)
+    + metric("Risk budget", fmt2(r.riskLimit), "at the selected book risk", false)
+    + metric("Max quantity", maxQty, "risk and buying power", false)
+    + metric("Planned loss", r.plannedLoss===null?"Set qty":fmt2(r.plannedLoss),
+        r.riskUsedPct===null?"not calculated":r.riskUsedPct.toFixed(2)+"% of book", overRisk)
+    + metric("Capital committed", r.capitalCommitted===null?"Set qty":fmt2(r.capitalCommitted),
+        r.deploymentPct===null?"not calculated":r.deploymentPct.toFixed(2)+"% of book", overCash)
+    + metric("Buying power left", r.remainingBuyingPower===null?"Set qty":fmt2(r.remainingBuyingPower),
+        "after this paper position", overCash);
+  box.innerHTML = head + '<span class="preflight-state'+(overRisk||overCash?' preflight-danger':'')+'">'
+    + esc(state) + '</span></div><div class="preflight-grid">'+grid+'</div>';
+  box.setAttribute("data-ready", overRisk || overCash ? "false" : "true");
+}
+
 function validateTicket(f, bk, quote){
   function bad(m){ return { ok:false, error:m }; }
 
@@ -2382,6 +2542,55 @@ function paperTile(label, big, sub, color){
 }
 function pnlColor(n){ return Number(n)>=0 ? "var(--success)" : "var(--danger)"; }
 function signed(n){ return (Number(n)>=0?"+":"")+fmt2(Math.abs(Number(n))===0?0:Number(n)); }
+
+function renderProposals(book){
+  var box=$("morrow-proposals"); if(!box) return;
+  var rows=(D.proposals||[]).filter(function(p){ return p.book_id===book.book_id; });
+  if(!rows.length){
+    box.innerHTML='<div class="empty">No Morrow proposals have been recorded for this book yet.</div>';
+    return;
+  }
+  function stateColor(state){
+    if(state==="qualified" || state==="opened") return "var(--success)";
+    if(state==="rejected" || state==="expired" || state==="cancelled") return "var(--danger)";
+    return "var(--warning)";
+  }
+  function evidenceLinks(value){
+    var list=Array.isArray(value)?value:[];
+    return list.map(function(source,i){
+      var url=safeProposalUrl(source&&source.url); if(!url) return "";
+      var label=(source&&source.title)||("Source "+(i+1));
+      return '<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+esc(label)+'</a>';
+    }).filter(Boolean).join("");
+  }
+  box.innerHTML='<div class="proposal-list">'+rows.map(function(p){
+    var quote=(D.quotes||[]).filter(function(q){ return q.symbol===p.symbol; })[0];
+    var evidence=evidenceLinks(p.evidence);
+    var status=String(p.state||"watch").replace(/_/g," ");
+    var updated=p.last_researched_at||p.news_checked_at||p.updated_at;
+    return '<article class="proposal-card">'
+      + '<div class="proposal-head"><div class="proposal-title"><strong>'+esc(p.symbol)+'</strong>'
+      + '<span class="pill" style="color:'+stateColor(p.state)+';border-color:'+stateColor(p.state)+'">'+esc(status)+'</span>'
+      + '<span class="small muted">'+esc(p.setup||"")+' &middot; '+esc(p.horizon||"")+' term &middot; confidence '+esc(String(p.confidence||"—"))+'</span></div>'
+      + '<span class="small muted">researched '+esc(ago(updated))+'</span></div>'
+      + '<div class="proposal-grid">'
+      + '<div class="note-line"><b class="muted">Thesis</b> '+esc(p.thesis||"Not recorded")+'</div>'
+      + '<div class="note-line"><b class="muted">Catalyst</b> '+esc(p.catalyst||"Not recorded")+'</div>'
+      + '<div class="note-line"><b class="muted">Strongest bear</b> '+esc(p.bear_case||"Not recorded")+'</div>'
+      + '<div class="note-line"><b class="muted">Invalidation</b> '+esc(p.invalidation||"Not recorded")+'</div>'
+      + '<div class="note-line"><b class="muted">Entry condition</b> '+esc(p.entry_condition||"None")
+      + (p.trigger_price==null?'':' <span class="mono">('+esc(p.trigger_direction)+' '+fmt2(Number(p.trigger_price))+')</span>')+'</div>'
+      + '<div class="note-line"><b class="muted">Levels</b> entry '+fmt2(Number(p.entry_price))
+      + ' &middot; target '+fmt2(Number(p.target_price))+' &middot; stop '+fmt2(Number(p.stop_price))
+      + (quote&&quote.price!=null?' &middot; now '+fmt2(Number(quote.price)):'')+'</div>'
+      + (p.rejection_reason?'<div class="note-line"><b class="muted">Why rejected</b> '+esc(p.rejection_reason)+'</div>':'')
+      + '<div class="note-line"><b class="muted">Current source review</b> '+esc(p.source_freshness||"unknown")
+      + ' &middot; news checked '+esc(ago(p.news_checked_at))+'</div>'
+      + '</div>'
+      + (evidence?'<div class="proposal-evidence">'+evidence+'</div>':'')
+      + '</article>';
+  }).join("")+'</div>';
+}
 
 /* One inline editor for both actions. Rendered into #trade-form under the
    blotter so it never fights the table layout, and cleared on save so the next
@@ -2506,6 +2715,7 @@ function renderTrade(){
     D.book = books[0].book_id;
   }
   var bk = books.filter(function(x){ return x.book_id===D.book; })[0] || {};
+  renderProposals(bk);
 
   var seg=$("book-seg");
   if(seg){
@@ -2557,6 +2767,7 @@ function renderTrade(){
             : 'Taxable.')
        + ' Simulation only, no orders are placed.</span>');
   }
+  renderTradePreflight();
 
   /* ---- open positions ----
      Closing used to go through prompt(), which is a browser dialog with no
@@ -2879,6 +3090,11 @@ function wireTrade(){
     rf.textContent=was; rf.disabled=false;
     await refresh();
   };
+  tradePreflightInputs.forEach(function(id){
+    var el=$(id); if(!el) return;
+    el.addEventListener("input", renderTradePreflight);
+    el.addEventListener("change", renderTradePreflight);
+  });
   var place=$("tk-place");
   if(place) place.onclick=async function(){
     var msg=$("tk-msg"); msg.textContent="";
