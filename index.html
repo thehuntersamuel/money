@@ -2681,15 +2681,40 @@ function wireRowActions(root, rows){
    none of these columns and simply render nothing here, which is the
    compatibility requirement: a thesis-only trade from before the gates still
    reads as a thesis-only trade. */
-function decisionMeta(t){
+/* Cost and planned loss got their own columns on the open blotter, so passing
+   hideMoney keeps the chip line from saying the same number twice. The closed
+   blotter still wants them inline, because there the plan is history. */
+function decisionMeta(t, hideMoney){
   var bits=[];
   if(t.setup)      bits.push('<b>'+esc(t.setup)+'</b>');
   if(t.confidence!=null) bits.push('conf <b>'+esc(String(t.confidence))+'</b>');
   if(t.rr_ratio!=null)   bits.push('<b>'+esc(Number(t.rr_ratio).toFixed(2))+':1</b> planned');
-  if(t.max_book_risk_pct!=null) bits.push('risk <b>'+esc(Number(t.max_book_risk_pct).toFixed(1))+'%</b>');
-  if(t.planned_loss!=null) bits.push('max loss <b>'+esc(fmt2(Number(t.planned_loss)))+'</b>');
+  if(!hideMoney && t.max_book_risk_pct!=null) bits.push('risk <b>'+esc(Number(t.max_book_risk_pct).toFixed(1))+'%</b>');
+  if(!hideMoney && t.planned_loss!=null) bits.push('max loss <b>'+esc(fmt2(Number(t.planned_loss)))+'</b>');
   if(t.review_on) bits.push((t.review_due?'<b style="color:var(--warning)">review due</b> ':'review ')+esc(shortDate(t.review_on)));
   return bits.length ? '<div class="meta-line">'+bits.join('')+'</div>' : '';
+}
+
+/* What a position actually costs and actually risks, in dollars. planned_loss
+   is null on anything opened before the decision gates existed, so fall back to
+   the geometry rather than printing a dash for a trade that plainly has a stop. */
+function tradeCost(t){
+  var c = Number(t.cost_basis);
+  if(isFinite(c) && c > 0) return c;
+  var q = Number(t.qty), e = Number(t.entry_price);
+  return (isFinite(q) && isFinite(e)) ? q * e : null;
+}
+function tradeRisk(t){
+  var pl = Number(t.planned_loss);
+  if(isFinite(pl) && pl > 0) return pl;
+  var q = Number(t.qty), e = Number(t.entry_price), st = Number(t.stop_price);
+  if(!isFinite(q) || !isFinite(e) || !isFinite(st)) return null;
+  return Math.abs(e - st) * q;
+}
+function pctOf(part, whole){
+  var p = Number(part), w = Number(whole);
+  if(!isFinite(p) || !isFinite(w) || w <= 0) return null;
+  return p / w * 100;
 }
 function decisionNotes(t){
   var h='';
@@ -2749,8 +2774,15 @@ function renderTrade(){
         pnlColor(bk.unrealized_pnl||0))
     + paperTile("Realized", signed(bk.realized_pnl||0),
         (bk.n_closed||0)+" closed", pnlColor(bk.realized_pnl||0))
+    /* "18% deployed" does not tell you what is on the line. The two numbers
+       that do are the cash actually committed and the loss if every stop
+       fills, so the tile says both in dollars and keeps the percent as the
+       supporting detail. */
     + paperTile("Buying power", fmt2(Number(bk.buying_power||0)),
-        bk.n_open ? dep.toFixed(0)+"% of the book committed" : invested,
+        bk.n_open
+          ? fmt2(Number(bk.open_cost||0))+" committed ("+dep.toFixed(0)+"%) · "
+            + fmt2(Number(bk.planned_risk||0))+" at risk"
+          : invested,
         /* Amber past two thirds. Sizing is what paper trading is for, so the
            tile has to speak before the loss does. */
         dep >= 67 ? "var(--warning)" : null);
@@ -2780,24 +2812,44 @@ function renderTrade(){
       ob.innerHTML='<section class="card"><div class="empty">No open paper trades. '
         + 'Place one above, or hit Trade on any row of the board.</div></section>';
     } else {
+      /* The blotter used to show quantity, entry and P&L -- everything except
+         the two numbers that answer "how much is on the line". Cost and At risk
+         are columns now, not chips buried in the meta line, and the card header
+         totals them so the answer is there before you read a single row. */
+      var totalCost = open.reduce(function(a,t){ return a + (tradeCost(t)||0); }, 0);
+      var totalRisk = open.reduce(function(a,t){ return a + (tradeRisk(t)||0); }, 0);
       var h='<section class="card"><header class="card-head"><h2 class="card-title">Open positions</h2>'
-        + '<div class="card-sub">'+open.length+' open · '+signed(bk.unrealized_pnl||0)+'</div></header>'
+        + '<div class="card-sub">'+open.length+' open · <b>'+esc(fmt2(totalCost))+'</b> committed · <b>'
+        + esc(fmt2(totalRisk))+'</b> at risk · '+signed(bk.unrealized_pnl||0)+'</div></header>'
         + '<div class="table-wrap"><table><thead><tr>'
         + '<th>Position</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th>'
+        + '<th class="num">Cost</th><th class="num">At risk</th>'
         + '<th class="num">P&amp;L</th><th class="num">Days</th><th>Flags</th><th></th></tr></thead><tbody>';
       open.forEach(function(t){
         var flags='';
         if(t.stop_breached) flags += '<span class="pill" style="color:var(--danger);border-color:var(--danger)">stop hit</span> ';
         if(t.target_hit)    flags += '<span class="pill" style="color:var(--success);border-color:var(--success)">target hit</span> ';
         if(t.is_real)       flags += '<span class="pill">REAL</span> ';
+        var cost = tradeCost(t), risk = tradeRisk(t);
+        var costPct = pctOf(cost, bk.equity), riskPct = pctOf(risk, bk.equity);
         h += '<tr><td><strong>'+esc(t.symbol)+'</strong> '
           +  '<span class="small muted">'+esc(t.direction==="short"?"short":"long")+' · '+esc(t.horizon)+' term</span>'
-          +  decisionMeta(t)
+          +  decisionMeta(t, true)
           +  (t.thesis||t.catalyst?decisionNotes(t):'<div class="small muted" style="margin-top:3px">No reasoning recorded</div>')
           +  '</td>'
           +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
-          +  '<td class="num mono small">'+fmt2(Number(t.entry_price))+'</td>'
+          +  '<td class="num mono small">'+fmt2(Number(t.entry_price))
+          +  (t.stop_price==null&&t.target_price==null?'':'<div class="small muted" style="white-space:nowrap">'
+             + (t.stop_price==null?'':'stop '+fmt2(Number(t.stop_price)))
+             + (t.stop_price!=null&&t.target_price!=null?' · ':'')
+             + (t.target_price==null?'':'target '+fmt2(Number(t.target_price)))+'</div>')
+          +  '</td>'
           +  '<td class="num mono small">'+(t.last_price==null?'<span class="muted">—</span>':fmt2(Number(t.last_price)))+'</td>'
+          +  '<td class="num mono small">'+(cost==null?'<span class="muted">—</span>':fmt2(cost))
+          +  (costPct==null?'':'<div class="small muted">'+costPct.toFixed(1)+'% of book</div>')+'</td>'
+          +  '<td class="num mono small"'+(riskPct!=null&&riskPct>1?' style="color:var(--warning)"':'')+'>'
+          +  (risk==null?'<span class="muted">—</span>':'-'+fmt2(risk))
+          +  (riskPct==null?'':'<div class="small muted">'+riskPct.toFixed(2)+'% of book</div>')+'</td>'
           +  '<td class="num mono" style="color:'+pnlColor(t.pnl||0)+'">'+signed(t.pnl||0)
           +  (t.pnl_pct==null?'':' <span class="small" style="opacity:.7">'+(Number(t.pnl_pct)>=0?"+":"")+Number(t.pnl_pct).toFixed(1)+'%</span>')+'</td>'
           +  '<td class="num mono small muted">'+esc(String(t.days_held))+'</td>'
@@ -2904,7 +2956,8 @@ function renderTrade(){
       ch += '<section class="card"><header class="card-head"><h2 class="card-title">Closed</h2>'
         + '<div class="card-sub">'+closed.length+' trade'+(closed.length===1?'':'s')+'</div></header>'
         + '<div class="table-wrap"><table><thead><tr><th>Position</th><th class="num">Qty</th>'
-        + '<th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th>'
+        + '<th class="num">Entry</th><th class="num">Exit</th><th class="num">Cost</th>'
+        + '<th class="num">P&amp;L</th>'
         + '<th class="num">Held</th><th>Book</th><th></th></tr></thead><tbody>';
       closed.forEach(function(t){
         /* Both halves of the record: why he got in, and what actually happened.
@@ -2917,6 +2970,7 @@ function renderTrade(){
           +  '<td class="num mono small">'+esc(String(t.qty))+'</td>'
           +  '<td class="num mono small">'+fmt2(Number(t.entry_price))+'</td>'
           +  '<td class="num mono small">'+fmt2(Number(t.exit_price))+'</td>'
+          +  '<td class="num mono small muted">'+(tradeCost(t)==null?'—':fmt2(tradeCost(t)))+'</td>'
           +  '<td class="num mono" style="color:'+pnlColor(t.pnl||0)+'">'+signed(t.pnl||0)+'</td>'
           +  '<td class="num mono small muted">'+esc(String(t.days_held))+'d</td>'
           +  '<td>'+(t.is_real?'<span class="pill">REAL</span>':'<span class="small muted">paper</span>')+'</td>'
