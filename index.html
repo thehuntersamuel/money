@@ -386,6 +386,14 @@ input[type="checkbox"] { accent-color: var(--text-secondary); }
 .proposal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-top: 9px; }
 .proposal-evidence { display: flex; gap: 6px 10px; flex-wrap: wrap; margin-top: 9px; }
 .proposal-evidence a { color: var(--personal); text-underline-offset: 2px; }
+/* The prices were the tail of a prose line and read as prose. Numbers belong
+   in cells, in the number face, at a size you can find without reading. */
+.level-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(94px, 1fr)); gap: 6px; margin-top: 10px; }
+.level-cell { min-width: 0; padding: 6px 9px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-1); }
+.level-cell.is-live { border-color: var(--text-muted); }
+.level-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.level-value { margin-top: 3px; font: 600 13.5px/1.2 var(--font-number); color: var(--text); }
+.level-sub { margin-top: 2px; font-size: 9.5px; color: var(--text-muted); }
 @media (max-width: 720px) { .proposal-grid { grid-template-columns: 1fr; } }
 .board-controls {
   display: grid; gap: 10px 12px; align-items: end;
@@ -2555,6 +2563,46 @@ function renderProposals(book){
     if(state==="rejected" || state==="expired" || state==="cancelled") return "var(--danger)";
     return "var(--warning)";
   }
+  /* Entry versus now is the whole question a glance at this card is asking.
+     When the proposal actually became a position, the money follows it: what
+     it cost, what is at risk, and what it is doing right now. */
+  function levelStrip(p, quote){
+    function cell(label, value, sub, cls, color){
+      return '<div class="level-cell'+(cls?' '+cls:'')+'">'
+        + '<div class="level-label">'+esc(label)+'</div>'
+        + '<div class="level-value"'+(color?' style="color:'+color+'"':'')+'>'+esc(value)+'</div>'
+        + (sub?'<div class="level-sub">'+esc(sub)+'</div>':'')+'</div>';
+    }
+    var entry = Number(p.entry_price);
+    var now = quote && quote.price != null ? Number(quote.price) : null;
+    var moved = (now !== null && isFinite(entry) && entry > 0) ? (now - entry) / entry * 100 : null;
+    var dir = p.direction === "short" ? -1 : 1;
+    var h = cell("Entry", fmt2(entry), "recorded " + shortDate(String(p.observed_at||"").slice(0,10)))
+      + cell("Now", now === null ? "—" : fmt2(now),
+          moved === null ? "no quote" : (moved >= 0 ? "+" : "") + moved.toFixed(2) + "% vs entry",
+          "is-live", moved === null ? null : pnlColor(moved * dir))
+      + cell("Target", fmt2(Number(p.target_price)), null)
+      + cell("Stop", fmt2(Number(p.stop_price)), null);
+
+    /* The linked trade, if this proposal was executed. The proposal card is
+       where the reasoning lives, so the position it produced belongs here too
+       rather than only in the blotter further down the page. */
+    var t = p.trade_id ? (D.trades||[]).filter(function(x){ return x.id === p.trade_id; })[0] : null;
+    if(t){
+      var cost = tradeCost(t), risk = tradeRisk(t);
+      h += cell("Qty", String(t.qty), "shares")
+        /* The total actually wagered, with the arithmetic spelled out, because
+           "15" and "$219.57" sitting in separate cells is not the same as
+           being told the position is $3,293.55. */
+        + cell("Total in", cost == null ? "—" : fmt2(cost),
+            String(t.qty) + " \u00d7 " + fmt2(Number(t.entry_price)))
+        + cell("At risk", risk == null ? "—" : "-" + fmt2(risk), "if the stop fills")
+        + cell("Open P&L", signed(t.pnl||0),
+            t.pnl_pct == null ? "since entry" : (Number(t.pnl_pct) >= 0 ? "+" : "") + Number(t.pnl_pct).toFixed(2) + "% since entry",
+            null, pnlColor(t.pnl||0));
+    }
+    return '<div class="level-strip">'+h+'</div>';
+  }
   function evidenceLinks(value){
     var list=Array.isArray(value)?value:[];
     return list.map(function(source,i){
@@ -2580,13 +2628,11 @@ function renderProposals(book){
       + '<div class="note-line"><b class="muted">Invalidation</b> '+esc(p.invalidation||"Not recorded")+'</div>'
       + '<div class="note-line"><b class="muted">Entry condition</b> '+esc(p.entry_condition||"None")
       + (p.trigger_price==null?'':' <span class="mono">('+esc(p.trigger_direction)+' '+fmt2(Number(p.trigger_price))+')</span>')+'</div>'
-      + '<div class="note-line"><b class="muted">Levels</b> entry '+fmt2(Number(p.entry_price))
-      + ' &middot; target '+fmt2(Number(p.target_price))+' &middot; stop '+fmt2(Number(p.stop_price))
-      + (quote&&quote.price!=null?' &middot; now '+fmt2(Number(quote.price)):'')+'</div>'
       + (p.rejection_reason?'<div class="note-line"><b class="muted">Why rejected</b> '+esc(p.rejection_reason)+'</div>':'')
       + '<div class="note-line"><b class="muted">Current source review</b> '+esc(p.source_freshness||"unknown")
       + ' &middot; news checked '+esc(ago(p.news_checked_at))+'</div>'
       + '</div>'
+      + levelStrip(p, quote)
       + (evidence?'<div class="proposal-evidence">'+evidence+'</div>':'')
       + '</article>';
   }).join("")+'</div>';
