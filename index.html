@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Pact Finance</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('mh.theme')==='light'?'light':'dark';}catch(e){document.documentElement.dataset.theme='dark';}</script>
 
 <!-- Favicons are the transparent mark, so they sit correctly on a light or a
      dark browser tab strip. The home-screen icons keep the black plate,
@@ -83,8 +84,7 @@
   --shadow: none;
   color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root {
+:root[data-theme="light"] {
     --bg: #f3f4f5;
     --surface-1: #ffffff;
     --surface-2: #f7f8f9;
@@ -95,7 +95,6 @@
     --text-secondary: #555d66;
     --text-muted: #7a838d;
     color-scheme: light;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -539,6 +538,68 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
  [data-pane="trade"] .metric-value { font-size:clamp(21px,5.8vw,30px); }
 }
 
+/* Shared visual system: dark by default, explicit device preference. */
+body { font-size:14px; line-height:1.55; }
+.shell { max-width:1480px; }
+.topbar { gap:12px; padding-bottom:18px; }
+.nav a { font-size:13px; padding:10px 12px; }
+.card { border-radius:14px; box-shadow:0 4px 20px #00000008; }
+.card-title { font-size:16px; letter-spacing:-.02em; text-transform:none; font-weight:650; }
+.card-sub,.small,.metric-sub { font-size:12px; line-height:1.6; }
+.metric-label,.micro-label,.entity-label { font-size:11px; }
+.metric-value { font-size:26px; letter-spacing:-.04em; }
+.metric { padding:18px; }
+.muted { color:var(--text-secondary); }
+.btn,.seg button { min-height:38px; font-size:13px; }
+button,input,select,textarea { font-family:inherit; }
+input:not([type=checkbox]),select,textarea { border-radius:8px; }
+th { font-size:11px; } td { padding-top:12px; padding-bottom:12px; }
+:focus-visible { outline:2px solid var(--personal); outline-offset:3px; }
+.page-head { padding:24px 0 22px; }
+.page-head h1 { font-size:30px; line-height:1.2; margin:0 0 8px; letter-spacing:-.045em; }
+.page-head p { margin:0; color:var(--text-secondary); max-width:760px; }
+#theme-toggle { white-space:nowrap; margin-left:auto; }
+#inv-chart { max-height:290px; width:100%; }
+.hub-story { padding:22px; margin-bottom:16px; background:linear-gradient(120deg,var(--personal-soft),transparent),var(--surface-1); }
+.hub-story h2 { margin:0 0 8px; font-size:22px; letter-spacing:-.03em; }
+.hub-story p { margin:6px 0; color:var(--text-secondary); max-width:850px; }
+.hub-feeds { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+.hub-feed { padding:18px; min-width:0; }
+.hub-feed h3 { margin:0 0 10px; font-size:15px; }
+.hub-feed p { font-size:12px; color:var(--text-secondary); overflow-wrap:anywhere; }
+.hub-feed strong { font-size:14px; }
+.hub-feed time { font-size:11px; color:var(--text-secondary); }
+details.proposal-card > summary { cursor:pointer; padding:8px; }
+details.proposal-card > summary .proposal-head { display:inline-flex; width:calc(100% - 24px); vertical-align:top; }
+details.proposal-card .proposal-grid { padding-top:16px; }
+.proposal-head { gap:12px; }.proposal-title { flex-wrap:wrap; }
+.proposal-levels { overflow:auto; }
+.hub-decisions { list-style:none; padding:0; margin:0; }
+.hub-decisions li { padding:14px 0; border-bottom:1px solid var(--border); }
+.hub-decisions li:last-child { border:0; }
+.hub-decisions p { margin:4px 0; color:var(--text-secondary); font-size:13px; }
+.hub-decisions time { color:var(--text-secondary); font-size:12px; }
+.table-wrap { overscroll-behavior-x:contain; }
+#tx-search { min-width:240px; }
+@media(max-width:1100px) and (min-width:761px) { .topbar { flex-wrap:wrap; }.nav { order:3; width:100%; margin:0; }.nav a { flex:1; text-align:center; } }
+@media(max-width:760px) {
+ .shell { padding:12px 16px; }.page-head { padding:20px 0; }.page-head h1 { font-size:26px; }
+ .brand .brand-word > span { display:none; }.brand-word { font-size:12px; }.topbar { gap:8px; }
+ #theme-toggle { font-size:12px; padding:6px; }.text-button { font-size:12px; }
+ .btn,.seg button,input:not([type=checkbox]),select { min-height:44px; }
+ input:not([type=checkbox]),select,textarea { font-size:16px !important; }
+ .hub-feeds { grid-template-columns:1fr; gap:10px; }.hub-feed { padding:16px; }
+ .hub-story { padding:18px; }.hub-story h2 { font-size:21px; }
+ .proposal-head { flex-direction:column; align-items:flex-start; }.proposal-title { gap:8px; }
+ #tx-search { width:100%; }.table-wrap { max-width:100%; }
+ table.hub-stack { display:block; min-width:0 !important; width:100%; }
+ .hub-stack thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+ .hub-stack tbody { display:block; }.hub-stack tr { display:grid; gap:6px; padding:16px 4px; border-bottom:1px solid var(--border); }
+ .hub-stack td { display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; padding:4px 8px; white-space:normal; text-align:right; overflow-wrap:anywhere; }
+ .hub-stack td::before { content:attr(data-label); font-size:12px; color:var(--text-secondary); text-align:left; flex:0 0 80px; }
+ .hub-stack td select { max-width:calc(100% - 90px); min-width:0; }
+}
+@media(max-width:360px) { .brand-word { display:none; }.shell { padding:10px; } }
 </style>
 </head>
 <body>
@@ -552,6 +613,7 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
       <a href="#investments" data-tab="investments">Investments</a><a href="#trade" data-tab="trade">Trade</a><a href="#assets" data-tab="assets">Assets</a><a href="#transactions" data-tab="transactions">Transactions</a>
       <a href="#connect" data-tab="connect">Connect</a>
     </nav>
+    <button type="button" id="theme-toggle" class="text-button" aria-label="Switch color theme">Theme</button>
     <a id="signout" class="text-button" style="cursor:pointer;display:none">Sign out</a>
   </header>
   <div class="scrim" id="scrim"></div>
@@ -574,7 +636,7 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
     </div>
   </div>
 
-  <div id="app" style="display:none">
+  <div id="app" style="display:none"><header class="page-head"><h1 id="page-title">Overview</h1><p id="page-description"></p></header>
     <div id="attention"></div>
     <div id="flags-body"></div>
 
@@ -645,13 +707,14 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
 
     <!-- Assets tab: things owned outright. No bank feed behind any of it. -->
     <div data-pane="trade" style="display:none">
-      <div id="morrow-readiness" aria-live="polite"></div>
+      <div id="trade-story"></div><div id="morrow-readiness" aria-live="polite"></div>
       <div id="book-seg" class="seg" role="group" aria-label="Paper book" style="margin-bottom:12px"></div>
       <div class="grid metric-grid-4" style="margin-bottom:12px" id="paper-tiles"></div>
 
+      <div id="morrow-data"></div><div id="paper-open" style="margin-bottom:16px"></div><section class="card" style="margin-bottom:16px"><header class="card-head"><h2 class="card-title">Latest saved decisions</h2></header><div id="morrow-timeline"></div></section>
       <section class="card" style="margin-bottom:16px">
         <header class="card-head">
-          <h2 class="card-title">Morrow proposals</h2>
+          <h2 class="card-title">Research library</h2>
           <div class="card-sub">Current source review, decision history, and conditional setups</div>
         </header>
         <div class="morrow-queue-controls"><label class="field"><span>Search research</span><input id="proposal-search" type="search" placeholder="Symbol or thesis"></label><label class="field"><span>Decision</span><select id="proposal-state"><option value="">All decisions</option><option value="watch">Watch</option><option value="rejected">Rejected</option><option value="qualified">Qualified</option><option value="opened">Opened</option><option value="closed">Closed</option></select></label></div>
@@ -706,15 +769,14 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
         </div>
       </details>
       <div id="morrow-operations"></div>
-      <div id="paper-open" style="margin-bottom:16px"></div>
       <section class="card" style="margin-bottom:16px">
         <header class="card-head">
-          <h2 class="card-title">Market board</h2>
+          <h2 class="card-title">Reference watchlist</h2>
           <div class="card-sub" id="board-sub"></div>
         </header>
         <div style="padding:12px 16px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <label class="small muted" style="display:flex;align-items:center;gap:6px;cursor:pointer">
-            <input type="checkbox" id="board-live" checked> Live
+            <input type="checkbox" id="board-live" checked> Auto-update
           </label>
           <span class="small" id="board-age"></span>
         </div>
@@ -727,7 +789,7 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
           </div>
           <div class="small" id="board-msg" style="margin-top:8px;min-height:16px"></div>
         </div>
-        <div id="board-body"></div>
+        <p class="small muted" style="padding:0 16px">Reference quotes from the existing watchlist feed. These are not verified Alpaca SIP observations and cannot qualify a Morrow entry.</p><div id="board-body"></div>
       </section>
       <div id="paper-closed"></div>
     </div>
@@ -760,7 +822,7 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
         <label class="small muted" style="display:flex;gap:6px;align-items:center">
           <input type="checkbox" id="hide-internal" checked> Hide internal transfers
         </label>
-        <span class="small muted" id="tx-count" style="margin-left:auto"></span>
+        <input type="search" id="tx-search" aria-label="Search transactions" placeholder="Search merchant or account"><span class="small muted" id="tx-count" style="margin-left:auto"></span>
       </div>
       <section class="card"><div id="tx-body"></div></section>
       <p class="small muted" style="margin-top:12px">Changing a dropdown here pins that row by hand. Rules never overwrite manual picks.
@@ -779,7 +841,7 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
     <div data-pane="connect" style="display:none">
       <section class="card">
         <header class="card-head"><h2 class="card-title">Connect an account</h2>
-          <div class="card-sub">Pick the entity FIRST. It decides which side of the wall the money lands on.</div></header>
+          <div class="card-sub">Choose Personal or Business before connecting. New accounts will be assigned to that entity.</div></header>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <div class="seg" id="link-seg"></div>
           <button class="btn primary" id="plaid-connect">Connect with Plaid</button>
@@ -1980,9 +2042,10 @@ async function setEntity(ids, entityId){
 /* ---------- render: transactions ---------- */
 function renderTx(){
   var hide=$("hide-internal").checked;
-  var rows=D.tx.filter(function(t){ return !hide||!t.is_internal; });
+  var query=($("tx-search").value||"").trim().toLowerCase();
+  var rows=D.tx.filter(function(t){ return (!hide||!t.is_internal)&&(!query||[t.merchant_name,t.name,t.account_name].join(" ").toLowerCase().includes(query)); });
   $("tx-count").textContent=rows.length+" rows";
-  if(!rows.length){ $("tx-body").innerHTML='<div class="empty">Nothing here. Sync a connection first.</div>'; return; }
+  if(!rows.length){ $("tx-body").innerHTML='<div class="empty">No transactions match. Try another search or include internal transfers.</div>'; return; }
   var bucketOpts='<option value="">— unbucketed —</option>'+D.buckets.map(function(b){
     return '<option value="'+esc(b.slug)+'">'+esc(b.label)+'</option>'; }).join("");
   var h='<div class="table-wrap"><table style="min-width:900px"><thead><tr><th>Date</th><th>Description</th><th>Account</th><th class="num">Amount</th><th>Entity</th><th>Bucket</th><th></th></tr></thead><tbody>';
@@ -2120,6 +2183,7 @@ function renderRules(){
   });
 }
 
+$("tx-search").oninput=function(){renderTx();};
 $("hide-internal").onchange=function(){ renderTx(); };
 
 /* ---------- portfolio value over time ---------- */
@@ -2634,16 +2698,16 @@ function renderProposals(book){
         + '<div class="level-value"'+(color?' style="color:'+color+'"':'')+'>'+esc(value)+'</div>'
         + (sub?'<div class="level-sub">'+esc(sub)+'</div>':'')+'</div>';
     }
-    var entry = Number(p.entry_price);
+    var entry = p.entry_price == null ? null : Number(p.entry_price);
     var now = quote && quote.price != null ? Number(quote.price) : null;
     var moved = (now !== null && isFinite(entry) && entry > 0) ? (now - entry) / entry * 100 : null;
     var dir = p.direction === "short" ? -1 : 1;
-    var h = cell("Entry", fmt2(entry), "recorded " + shortDate(String(p.observed_at||"").slice(0,10)))
-      + cell("Now", now === null ? "—" : fmt2(now),
-          moved === null ? "no quote" : (moved >= 0 ? "+" : "") + moved.toFixed(2) + "% vs entry",
-          "is-live", moved === null ? null : pnlColor(moved * dir))
-      + cell("Target", fmt2(Number(p.target_price)), null)
-      + cell("Stop", fmt2(Number(p.stop_price)), null);
+    var h = cell("Planned entry", entry == null ? "—" : fmt2(entry), "recorded " + shortDate(String(p.observed_at||"").slice(0,10)))
+      + cell("Reference quote", now === null ? "—" : fmt2(now),
+          now === null ? 'no quote' : 'Fetched '+ago(quote.fetched_at)+' · reference only',
+          "", null)
+      + cell("Target", p.target_price == null ? "—" : fmt2(Number(p.target_price)), null)
+      + cell("Stop", p.stop_price == null ? "—" : fmt2(Number(p.stop_price)), null);
 
     /* The linked trade, if this proposal was executed. The proposal card is
        where the reasoning lives, so the position it produced belongs here too
@@ -2682,13 +2746,13 @@ function renderProposals(book){
   box.innerHTML='<div class="proposal-list">'+rows.map(function(p){
     var quote=(D.quotes||[]).filter(function(q){ return q.symbol===p.symbol; })[0];
     var evidence=evidenceLinks(p.evidence);
-    var status=String(p.state||"watch").replace(/_/g," ");
+    var status=decisionLabel(p.state);
     var updated=p.last_researched_at||p.news_checked_at||p.updated_at;
-    return '<article class="proposal-card">'
+    return '<details class="proposal-card"><summary>'
       + '<div class="proposal-head"><div class="proposal-title"><strong>'+esc(p.symbol)+'</strong>'
       + '<span class="pill" style="color:'+stateColor(p.state)+';border-color:'+stateColor(p.state)+'">'+esc(status)+'</span>'
-      + '<span class="small muted">'+esc(p.setup||"")+' &middot; '+esc(p.horizon||"")+' term &middot; confidence '+esc(String(p.confidence||"—"))+'</span></div>'
-      + '<span class="small muted">researched '+esc(ago(updated))+'</span></div>'
+      + '<span class="small muted">'+esc(p.setup||"")+' &middot; '+esc(p.horizon||"")+' term &middot; reported confidence '+esc(String(p.confidence||"—"))+'</span></div>'
+      + '<span class="small muted">researched '+esc(ago(updated))+' · View research</span></div></summary>'
       + '<div class="proposal-grid">'
       + '<div class="note-line"><b class="muted">Thesis</b> '+esc(p.thesis||"Not recorded")+'</div>'
       + '<div class="note-line"><b class="muted">Catalyst</b> '+esc(p.catalyst||"Not recorded")+'</div>'
@@ -2702,7 +2766,7 @@ function renderProposals(book){
       + '</div>'
       + levelStrip(p, quote)
       + (evidence?'<div class="proposal-evidence">'+evidence+'</div>':'')
-      + '</article>';
+      + '</details>';
   }).join("")+'</div>';
 }
 
@@ -2850,6 +2914,7 @@ function decisionNotes(t){
 function isMorrowBook(book){ return book && book.label === "Robinhood Savings"; }
 function renderMorrowWorkbench(book){
   var active=isMorrowBook(book);
+  renderMorrowSummary(book);
   $("morrow-readiness").innerHTML=active?'<div class="morrow-status"><div><strong>Research open. New paper entries paused.</strong><p>Readiness, consolidated SIP coverage and champion activation require verification. Existing exits remain assigned to the paper bridge. Real trading is disabled.</p></div><span class="pill">Paper only</span></div>':"";
   MAX_BOOK_RISK=active?0.5:2;
   $("tk-risk-pct").max=String(MAX_BOOK_RISK);
@@ -2914,18 +2979,18 @@ function renderTrade(){
       ? fmt(Number(bk.securities))+" already invested"
       : "all of it in cash";
     tiles.innerHTML =
-      paperTile("Book equity", fmt2(Number(bk.equity||0)),
+      paperTile("Simulation value", fmt2(Number(bk.equity||0)),
         "stake is "+esc(bk.account_name||"the account")+" ··"+esc(bk.mask||""))
-    + paperTile("Open P&L", signed(bk.unrealized_pnl||0),
+    + paperTile("Open gain / loss", signed(bk.unrealized_pnl||0),
         (bk.n_open||0)+" open position"+(Number(bk.n_open)===1?"":"s"),
         pnlColor(bk.unrealized_pnl||0))
-    + paperTile("Realized", signed(bk.realized_pnl||0),
+    + paperTile("Completed gain / loss", signed(bk.realized_pnl||0),
         (bk.n_closed||0)+" closed", pnlColor(bk.realized_pnl||0))
     /* "18% deployed" does not tell you what is on the line. The two numbers
        that do are the cash actually committed and the loss if every stop
        fills, so the tile says both in dollars and keeps the percent as the
        supporting detail. */
-    + paperTile("Buying power", fmt2(Number(bk.buying_power||0)),
+    + paperTile("Available to simulate", fmt2(Number(bk.buying_power||0)),
         bk.n_open
           ? fmt2(Number(bk.open_cost||0))+" committed ("+dep.toFixed(0)+"%) · "
             + fmt2(Number(bk.planned_risk||0))+" at risk"
@@ -3202,7 +3267,7 @@ function paintAge(){
     + esc(ph.label)
     + (ph.opensAt ? ' <span class="muted">· opens '+esc(opensWords(ph.opensAt))+'</span>' : '')
     + ' · updated ' + esc(ageWords(at))
-    + (streaming ? ' · <span class="muted">streaming</span>' : ' · <span class="muted">paused</span>');
+    + (streaming ? ' · <span class="muted">automatic refresh on</span>' : ' · <span class="muted">paused</span>');
 }
 
 /* Rows arrive in a burst of ~74, one per symbol. Patch them into memory and
@@ -3469,6 +3534,9 @@ function wireDrawer(){
 
 /* ---------- tabs ---------- */
 function showTab(name){
+  var titles={overview:['Overview','Your personal and business finances, clearly separated.'],accounts:['Accounts','Balances, ownership, and account settings in one place.'],investments:['Investments','Track holdings and performance while keeping retirement money separate.'],assets:['Assets','Property and other things you own, with your recorded valuations.'],transactions:['Transactions','Find a transaction, review its category, and keep your records organized.'],connect:['Connections','Manage the institutions that supply your financial data.'],trade:['Morrow','Follow the research, understand the decisions, and track paper positions. No real orders.']};
+  var heading=titles[name]||titles.overview;$("page-title").textContent=heading[0];$("page-description").textContent=heading[1];
+  document.querySelectorAll('#nav a').forEach(function(a){if(a.dataset.tab===name)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   Array.prototype.forEach.call(document.querySelectorAll("[data-pane]"), function(p){
     p.style.display = p.getAttribute("data-pane")===name ? "" : "none";
   });
@@ -3517,6 +3585,33 @@ async function boot(){
     else linkMsg("critical","Came back from your bank but the Link session was lost. Start the connection again.");
   }
 }
+
+function decisionLabel(state){return ({watch:'Watching',rejected:'Passed on',qualified:'Reviewed · not purchased',opened:'Paper position',closed:'Completed',expired:'Expired',cancelled:'Cancelled'})[state]||'Status unknown';}
+function providerPresentation(health, dataset, now){
+  if(!health||!health.available)return {title:'Status unavailable',note:'The Hub could not load provider health. Connection and freshness are unverified.'};
+  var row=(health.rows||[]).find(function(r){return r.dataset===dataset;});
+  if(!row)return {title:'Awaiting ingestion receipt',note:'No saved feed receipt is available. A working API key alone does not confirm scheduled delivery.'};
+  var age=now-Date.parse(row.checked_at);
+  if(!Number.isFinite(age)||age<0||age>600000)return {title:'Receipt needs refresh',note:'The last report is too old to establish current feed health.',at:row.checked_at};
+  return {title:row.status==='ok'?'Feed reporting healthy':row.status==='failed'?'Feed needs attention':'Awaiting verified coverage',note:row.coverage||'Coverage has not been reported.',at:row.checked_at};
+}
+function renderMorrowSummary(book){
+ var proposals=(D.proposals||[]).filter(function(p){return p.book_id===book.book_id;});
+ var positions=(D.trades||[]).filter(function(t){return t.book_id===book.book_id&&t.status==='open'&&t.is_real===false;});
+ var complete=D.proposalQueueStatus?.complete!==false;
+ var research=D.research||{};var runs=(research.rows||[]).filter(function(r){return r.book_id===book.book_id&&r.kind==='run';});
+ $('trade-story').innerHTML='<section class="card hub-story"><h2>'+ (positions.length?positions.length+' paper position'+(positions.length===1?' is':'s are')+' open':'No paper positions are open')+'</h2><p>Paper trading is a simulation: the position ledger below shows recorded practice trades, not purchases in your brokerage account.</p><p>'+ (complete?proposals.filter(function(p){return p.state==='watch';}).length+' ideas being watched · '+proposals.filter(function(p){return p.state==='rejected';}).length+' ideas passed on':'Research queue is incomplete; decision totals are unavailable.')+'</p><p>'+ (runs.length?'Latest saved job receipt: '+esc(ago(runs[0].created_at))+'. Reported execution details are below.':'No Morrow job receipts have synced for this book. Current research records do not prove the Mac jobs are running.')+'</p></section>';
+ $('morrow-data').innerHTML='<div class="hub-feeds">'+[['alpaca_sip','Alpaca · consolidated prices'],['tiingo_eod','Tiingo · daily history'],['tiingo_news','Tiingo · news']].map(function(pair){var state=providerPresentation(D.integrationHealth,pair[0],Date.now());return '<section class="card hub-feed"><h3>'+esc(pair[1])+'</h3><strong>'+esc(state.title)+'</strong><p>'+esc(state.note)+'</p>'+(state.at?'<time>'+esc(state.at)+'</time>':'')+'</section>';}).join('')+'</div>';
+ var recent=proposals.slice().sort(function(a,b){return (Date.parse(b.updated_at)||0)-(Date.parse(a.updated_at)||0);}).slice(0,6);
+ $('morrow-timeline').innerHTML=recent.length?'<ul class="hub-decisions">'+recent.map(function(p){return '<li><strong>'+esc(p.symbol)+' · '+esc(decisionLabel(p.state))+'</strong><p>'+esc(p.rejection_reason||p.thesis||'No explanation recorded.')+'</p><time>Saved '+esc(ago(p.updated_at))+'</time></li>';}).join('')+'</ul><p class="small muted">Latest saved state for each idea, not a complete event history. Expand the research below for sources, risks, and conditions.</p>':'<p class="muted">No saved decisions for this book yet.</p>';
+}
+function updateThemeLabel(){var light=document.documentElement.dataset.theme==='light';$('theme-toggle').textContent=light?'Dark mode':'Light mode';$('theme-toggle').setAttribute('aria-label','Switch to '+(light?'dark':'light')+' mode');}
+updateThemeLabel();
+$('theme-toggle').onclick=function(){var next=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=next;try{localStorage.setItem('mh.theme',next);}catch(e){}cssv=getComputedStyle(document.documentElement);updateThemeLabel();};
+/* Add mobile labels without duplicating editable controls or their handlers. */
+function labelMobileTables(root){root.querySelectorAll('table').forEach(function(table){if(table.closest('#tx-body')||table.closest('[data-pane="connect"]')){table.classList.add('hub-stack');var headers=Array.from(table.querySelectorAll('thead th')).map(function(h){return h.textContent;});table.querySelectorAll('tbody tr').forEach(function(row){Array.from(row.cells).forEach(function(cell,i){cell.dataset.label=headers[i]||'Actions';cell.querySelectorAll('select').forEach(function(select){select.setAttribute('aria-label',(headers[i]||'Setting')+' for '+(row.cells[1]?.textContent||'row'));});});});}});}
+new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){if(n.nodeType===1)labelMobileTables(n.parentElement||n);});});}).observe($('app'),{childList:true,subtree:true});
+
 boot();
 </script>
 </body>
