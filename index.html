@@ -504,6 +504,40 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
   body.drawer-open .scrim { opacity: 0; pointer-events: none; }
   .metric-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
 }
+
+/* Morrow workbench: legible controls, bounded panels and progressive disclosure. */
+[data-pane="trade"] .small, [data-pane="trade"] .card-sub { font-size:13px; line-height:1.5; }
+[data-pane="trade"] .field > span { font-size:12px; white-space:normal; }
+[data-pane="trade"] .card-title { font-size:16px; }
+[data-pane="trade"] .note-line { font-size:14px; line-height:1.65; overflow-wrap:anywhere; }
+[data-pane="trade"] .proposal-grid { gap:12px 18px; }
+[data-pane="trade"] .btn, [data-pane="trade"] summary { min-height:44px; }
+[data-pane="trade"] .card, [data-pane="trade"] .grid > * { min-width:0; }
+.morrow-status { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; padding:18px; margin-bottom:16px; border:1px solid var(--border-strong); border-left:3px solid var(--warning); border-radius:var(--radius-sm); background:var(--surface-1); }
+.morrow-status strong { display:block; font-size:17px; margin-bottom:5px; }
+.morrow-status p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.6; max-width:76ch; }
+.morrow-status .pill { flex-shrink:0; }
+.morrow-panels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.morrow-panel { border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface-1); padding:0 16px; }
+.morrow-panel summary, .morrow-ticket > summary { cursor:pointer; padding:14px 0; font-weight:650; font-size:14px; }
+.morrow-panel p { margin:0 0 16px; font-size:13px; line-height:1.65; color:var(--text-secondary); }
+.morrow-panel dl { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:9px 16px; margin:0 0 16px; font-size:13px; }
+.morrow-panel dt { color:var(--text-muted); }.morrow-panel dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.morrow-ticket > summary { padding:16px; }.morrow-ticket:not([open]) { padding-bottom:0; }
+.morrow-queue-controls { display:grid; grid-template-columns:minmax(0,1fr) 180px; gap:12px; margin:0 0 14px; }
+[data-pane="trade"] .table-wrap { max-height:480px; overflow:auto; overscroll-behavior:contain; }
+[data-pane="trade"] thead th { position:sticky; top:0; background:var(--surface-1); z-index:1; }
+[data-pane="trade"] a:focus-visible, [data-pane="trade"] button:focus-visible, [data-pane="trade"] summary:focus-visible { outline:2px solid var(--text); outline-offset:3px; }
+@media(max-width:700px) {
+ .morrow-panels { grid-template-columns:1fr; }.morrow-status { flex-direction:column; gap:10px; padding:15px; }
+ .morrow-queue-controls { grid-template-columns:1fr; }
+ [data-pane="trade"] .field input, [data-pane="trade"] .field select, [data-pane="trade"] .field textarea { font-size:16px; min-height:44px; }
+ [data-pane="trade"] .inline-form { grid-template-columns:1fr !important; }
+ [data-pane="trade"] #book-seg { display:flex; flex-wrap:wrap; width:100%; }
+ [data-pane="trade"] #book-seg button { flex:1 1 140px; min-height:44px; white-space:normal; }
+ [data-pane="trade"] .metric-value { font-size:clamp(21px,5.8vw,30px); }
+}
+
 </style>
 </head>
 <body>
@@ -610,9 +644,21 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
 
     <!-- Assets tab: things owned outright. No bank feed behind any of it. -->
     <div data-pane="trade" style="display:none">
+      <div id="morrow-readiness" aria-live="polite"></div>
       <div id="book-seg" class="seg" role="group" aria-label="Paper book" style="margin-bottom:12px"></div>
       <div class="grid metric-grid-4" style="margin-bottom:12px" id="paper-tiles"></div>
+
       <section class="card" style="margin-bottom:16px">
+        <header class="card-head">
+          <h2 class="card-title">Morrow proposals</h2>
+          <div class="card-sub">Current source review, decision history, and conditional setups</div>
+        </header>
+        <div class="morrow-queue-controls"><label class="field"><span>Search research</span><input id="proposal-search" type="search" placeholder="Symbol or thesis"></label><label class="field"><span>Decision</span><select id="proposal-state"><option value="">All decisions</option><option value="watch">Watch</option><option value="rejected">Rejected</option><option value="qualified">Qualified</option><option value="opened">Opened</option><option value="closed">Closed</option></select></label></div>
+        <div id="morrow-proposals"></div>
+        <p class="small muted" style="margin:10px 0 0">Price can trigger a fresh review, but never a paper trade by itself.</p>
+      </section>
+      <details class="card morrow-ticket" style="margin-bottom:16px">
+        <summary>Paper trade planner</summary>
         <header class="card-head">
           <h2 class="card-title">Place a paper trade</h2>
           <div class="card-sub" id="paper-cap"></div>
@@ -654,18 +700,11 @@ body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
             <label class="field"><span>Evidence and sources</span>
               <textarea id="tk-evidence" placeholder="Facts checked, source links, counterarguments, and unresolved risks."></textarea></label>
           </div>
-          <div class="gate-note">Nothing is placed without a thesis, catalyst, invalidation, evidence, review date, target and stop, and at least 1.5:1 reward to risk &mdash; both as you state it and as your prices actually imply. Planned loss is capped at 2% of the book. Simulation only; no orders are placed.</div>
+          <div class="gate-note" id="ticket-policy">Nothing is placed without a thesis, catalyst, invalidation, evidence, review date, target and stop, and at least 1.5:1 reward to risk &mdash; both as you state it and as your prices actually imply. Planned loss is capped at 2% of the book. Simulation only; no orders are placed.</div>
           <div class="small" id="tk-msg" style="margin-top:10px;min-height:16px"></div>
         </div>
-      </section>
-      <section class="card" style="margin-bottom:16px">
-        <header class="card-head">
-          <h2 class="card-title">Morrow proposals</h2>
-          <div class="card-sub">Current source review, decision history, and conditional setups</div>
-        </header>
-        <div id="morrow-proposals"></div>
-        <p class="small muted" style="margin:10px 0 0">Price can trigger a fresh review, but never a paper trade by itself.</p>
-      </section>
+      </details>
+      <div id="morrow-operations"></div>
       <div id="paper-open" style="margin-bottom:16px"></div>
       <section class="card" style="margin-bottom:16px">
         <header class="card-head">
@@ -2554,8 +2593,11 @@ function signed(n){ return (Number(n)>=0?"+":"")+fmt2(Math.abs(Number(n))===0?0:
 function renderProposals(book){
   var box=$("morrow-proposals"); if(!box) return;
   var rows=(D.proposals||[]).filter(function(p){ return p.book_id===book.book_id; });
+  var search=($("proposal-search")?.value||"").toLowerCase();
+  var stateFilter=$("proposal-state")?.value||"";
+  rows=rows.filter(function(p){return (!stateFilter||p.state===stateFilter)&&(!search||(p.symbol+" "+p.thesis).toLowerCase().indexOf(search)>=0);});
   if(!rows.length){
-    box.innerHTML='<div class="empty">No Morrow proposals have been recorded for this book yet.</div>';
+    box.innerHTML='<div class="empty">No proposals match this book and filter.</div>';
     return;
   }
   function stateColor(state){
@@ -2654,6 +2696,7 @@ function wireRowActions(root, rows){
   Array.prototype.forEach.call(root.querySelectorAll("[data-note]"), function(b){
     b.onclick=function(){
       var t=find(b.getAttribute("data-note")); if(!t) return;
+      if(t.status==="closed" && (D.proposals||[]).some(function(p){return p.trade_id===t.id;})){alert("The canonical close is immutable. Record a separate review instead.");return;}
       var closed = t.status==="closed";
       var cur = closed ? (t.close_note||"") : (t.thesis||"");
       var f=tradeFormSlot(root); if(!f) return;
@@ -2684,6 +2727,7 @@ function wireRowActions(root, rows){
   Array.prototype.forEach.call(root.querySelectorAll("[data-close]"), function(b){
     b.onclick=function(){
       var t=find(b.getAttribute("data-close")); if(!t) return;
+      if((D.proposals||[]).some(function(p){return p.trade_id===t.id;})){alert("Linked Morrow exits use the paper bridge so the trade, proposal and receipt close together.");return;}
       var f=tradeFormSlot(root); if(!f) return;
       closeTradeForm();
       f.innerHTML='<div class="inline-form">'
@@ -2715,6 +2759,7 @@ function wireRowActions(root, rows){
   Array.prototype.forEach.call(root.querySelectorAll("[data-real]"), function(b){
     b.onclick=async function(){
       var id=b.getAttribute("data-real"), now=b.getAttribute("data-realnow")==="1";
+      if((D.proposals||[]).some(function(p){return p.trade_id===id;})){alert("Morrow positions remain paper-only.");return;}
       b.disabled=true;
       var r=await sb.from("trades").update({ is_real: !now, updated_at:new Date().toISOString() }).eq("id", id);
       if(r.error) alert(r.error.message);
@@ -2776,6 +2821,23 @@ function decisionNotes(t){
   return h;
 }
 
+function isMorrowBook(book){ return book && book.label === "Robinhood Savings"; }
+function renderMorrowWorkbench(book){
+  var active=isMorrowBook(book);
+  $("morrow-readiness").innerHTML=active?'<div class="morrow-status"><div><strong>Research open. New paper entries paused.</strong><p>Readiness, consolidated SIP coverage and champion activation require verification. Existing exits remain assigned to the paper bridge. Real trading is disabled.</p></div><span class="pill">Paper only</span></div>':"";
+  MAX_BOOK_RISK=active?0.5:2;
+  $("tk-risk-pct").max=String(MAX_BOOK_RISK);
+  $("tk-risk-pct").placeholder=String(active?0.5:1);
+  $("tk-place").disabled=active;
+  $("tk-place").textContent=active?"Entries paused":"Place";
+  $("ticket-policy").textContent=active?'Planned risk: 0.5% per position, 1% aggregate; maximum 3 open positions and 1 new opening per New York trading day. Both stated and implied reward:risk must be at least 1.5:1. Stops do not guarantee the loss limit during gaps. New entries are currently blocked.':'Planned loss is capped at 2% of this book. Both stated and implied reward:risk must be at least 1.5:1. Simulation only.';
+  $("morrow-operations").innerHTML=active?'<div class="morrow-panels">'
+    +'<details class="morrow-panel"><summary>Data health · unverified</summary><dl><dt>Consolidated SIP</dt><dd>Not verified</dd><dt>Event freshness</dt><dd>Unknown</dd><dt>Missed intervals</dt><dd>Coverage unverified</dd><dt>Tiingo</dt><dd>Optional · not connected</dd></dl><p>Existing board quotes are not proof of SIP entitlement. Provider observations stay hidden until display rights are verified.</p></details>'
+    +'<details class="morrow-panel"><summary>Operations · live readback pending</summary><dl><dt>Reasoning route</dt><dd>GPT-5.6 / high intended</dd><dt>Actual last model</dt><dd>Unknown</dd><dt>Last / next run</dt><dd>Live telemetry unavailable</dd></dl><p>Six existing reasoning jobs and one deterministic guard are documented. The hosted GPT-5.4 fallback is unchanged. No competing scheduler has been added.</p></details>'
+    +'<details class="morrow-panel"><summary>Experiment lab · exploratory</summary><dl><dt>Champion version</dt><dd>Freeze not verified</dd><dt>Evaluation clock</dt><dd>Not started</dd><dt>Promotion</dt><dd>Owner approval required</dd></dl><p>Watch and rejected ideas remain separate from executed paper results. A challenger cannot promote itself or rewrite an active rulebook.</p></details>'
+    +'<details class="morrow-panel"><summary>ROI · evaluation incomplete</summary><dl><dt>Exposure-matched baseline</dt><dd>Unavailable</dd><dt>Fixed data costs</dt><dd>Purchase receipts required</dd><dt>Net active result</dt><dd>Not established</dd><dt>Uncertainty / sample maturity</dt><dd>Not established</dd></dl><p>Book P&amp;L above is the ledger result. It does not establish performance after subscriptions, spreads, slippage or passive alternatives.</p></details></div>':"";
+}
+
 function renderTrade(){
   var books = D.books || [];
   /* Two books, two different kinds of money. Blending them into one stake was
@@ -2786,6 +2848,7 @@ function renderTrade(){
     D.book = books[0].book_id;
   }
   var bk = books.filter(function(x){ return x.book_id===D.book; })[0] || {};
+  renderMorrowWorkbench(bk);
   renderProposals(bk);
 
   var seg=$("book-seg");
@@ -3153,6 +3216,7 @@ function subscribeQuotes(){
 
 /* Wired once at boot; renderTrade only paints. */
 function wireTrade(){
+  ["proposal-search","proposal-state"].forEach(function(id){$(id).addEventListener("input",function(){renderProposals((D.books||[]).find(function(b){return b.book_id===D.book;})||{});});});
   var f=$("board-filter"); if(f) f.oninput=function(){ renderTrade(); };
   var lv=$("board-live");
   if(lv) lv.onchange=function(){ liveOn = lv.checked; subscribeQuotes(); };
@@ -3200,6 +3264,7 @@ function wireTrade(){
     var msg=$("tk-msg"); msg.textContent="";
     var sym=($("tk-sym").value||"").trim().toUpperCase();
     var bk=(D.books||[]).filter(function(x){ return x.book_id===D.book; })[0] || {};
+    if(isMorrowBook(bk)){msg.textContent="New Morrow entries are paused until readiness is verified.";return;}
     var quote=(D.quotes||[]).filter(function(x){ return x.symbol===sym; })[0];
 
     var v = validateTicket({

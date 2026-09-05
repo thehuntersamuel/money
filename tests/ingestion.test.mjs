@@ -1,0 +1,31 @@
+import {connectSip,supabaseObservationStore} from '../server/ingestion.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';
+class Socket {
+ handlers={};sent=[];closed=false;
+ addEventListener(k,f){this.handlers[k]=f;}
+ send(x){this.sent.push(JSON.parse(x));}
+ close(){this.closed=true;}
+ emit(k,x){this.handlers[k]?.(k==='message'?{data:JSON.stringify(x)}:x);}
+}
+test('SIP worker requires subscription, serializes durable writes and reports disconnect',async()=>{
+ const socket=new Socket(),stored=[],health=[];
+ const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,
+  fetchImpl:async()=>Response.json({trades:{SPY:[]}}),socketFactory:url=>{assert.match(url,/\/sip$/);return socket;},
+  store:async rows=>stored.push(...rows),calendar:async()=> 'regular',now:()=> '2026-09-04T15:00:00Z',onHealth:async r=>health.push(r)});
+ socket.emit('open');socket.emit('message',[{T:'success',msg:'authenticated'}]);await worker.drain();
+ assert.deepEqual(socket.sent[1],{action:'subscribe',trades:['SPY']});
+ socket.emit('message',[{T:'subscription',trades:['SPY']},{T:'t',S:'SPY',p:100,i:1,t:'2026-09-04T15:00:00Z'}]);await worker.drain();
+ assert.equal(stored.length,1);assert.equal(stored[0].is_test,false);assert(worker.isHealthy());
+ socket.emit('close');assert(!worker.isHealthy());assert.equal(health.at(-1).status,'disconnected');
+});
+test('persistence failure stops streaming rather than dropping observations silently',async()=>{
+ const socket=new Socket();
+ const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,
+ fetchImpl:async()=>Response.json({trades:{SPY:[]}}),socketFactory:()=>socket,calendar:async()=> 'regular',store:async()=>{throw Error('TEST failure')},now:()=> '2026-09-04T15:00:00Z'});
+ socket.emit('message',[{T:'subscription',trades:['SPY']},{T:'t',S:'SPY',p:100,i:1,t:'2026-09-04T15:00:00Z'}]);await worker.drain();assert(socket.closed);assert(!worker.isHealthy());
+});
+test('store is scoped to the approved project and ignores duplicate source IDs',async()=>{
+ assert.throws(()=>supabaseObservationStore({url:'https://other.supabase.co',serviceRole:'TEST'}),/approved/);
+ const store=supabaseObservationStore({url:'https://fglbxoafbebsryjeqcbu.supabase.co',serviceRole:'TEST',fetchImpl:async(url,options)=>{assert.equal(url.searchParams.get('on_conflict'),'source_id');assert.match(options.headers.prefer,/ignore-duplicates/);return new Response(null,{status:201});}});
+ await store([{source_id:'TEST'}]);
+});
