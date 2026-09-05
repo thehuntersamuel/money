@@ -16,7 +16,7 @@ A persistent SIP socket requires a supervised server worker; a short-lived Supab
 
 ## Install on the Mac — Maddox performs these steps
 
-1. Read local project instructions and the operating contract. Fetch `fix/morrow-reliability` from the existing money repository into a separate worktree. Do not reset the stale Mac checkout, discard the staged lifecycle worktree, or merge without backend acceptance gates. Record the remote SHA and inspect the diff. Use the exact reviewed revision, not an unpinned download.
+1. Read local project instructions and the operating contract. Fetch the reviewed `main` source from the existing money repository into a separate worktree; use `verification/RELEASE_RECEIPT.md` and the repository commit to pin the release. Do not reset the stale Mac checkout, discard the staged lifecycle worktree, or merge without backend acceptance gates. Record the remote SHA and inspect the diff. Use the exact reviewed revision, not an unpinned download.
 2. Inspect `~/.hermes/cron/jobs.json` read-only and `hermes cron list`. Preserve a private snapshot of the seven Morrow jobs, their current prompts, monitor references, and timezone/run metadata. Do not include unrelated jobs or credentials in a public artifact. Compare against `mac/scheduler-baseline.json`.
 3. Run from the reviewed checkout:
 

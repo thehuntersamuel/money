@@ -2697,7 +2697,7 @@ function renderProposals(book){
       + '<div class="note-line"><b class="muted">Entry condition</b> '+esc(p.entry_condition||"None")
       + (p.trigger_price==null?'':' <span class="mono">('+esc(p.trigger_direction)+' '+fmt2(Number(p.trigger_price))+')</span>')+'</div>'
       + (p.rejection_reason?'<div class="note-line"><b class="muted">Why rejected</b> '+esc(p.rejection_reason)+'</div>':'')
-      + '<div class="note-line"><b class="muted">Current source review</b> '+esc(p.source_freshness||"unknown")
+      + '<div class="note-line"><b class="muted">Source assessment at review</b> '+esc(p.source_freshness||"unknown")
       + ' &middot; news checked '+esc(ago(p.news_checked_at))+'</div>'
       + '</div>'
       + levelStrip(p, quote)
@@ -2865,7 +2865,7 @@ function renderMorrowWorkbench(book){
   function panel(title,items,note){return '<details class="morrow-panel"><summary>'+esc(title)+'</summary><dl>'+items.map(function(pair){return '<dt>'+esc(pair[0])+'</dt><dd>'+esc(pair[1]==null?'Unknown':String(pair[1]))+'</dd>';}).join('')+'</dl><p>'+esc(note)+'</p></details>';}
   function dollars(value){return typeof value==='number'&&isFinite(value)?fmt2(value):'Unavailable';}
   var health=(D.integrationHealth||{}).rows||[];
-  function feedStatus(dataset){var h=health.find(function(x){return x.dataset===dataset;});if(!h)return 'Awaiting activation';var age=Date.now()-Date.parse(h.checked_at);return (age>600000||age<0||!isFinite(age)?'Stale receipt · ':h.status+' · ')+h.coverage+' · '+h.checked_at;}
+  function feedStatus(dataset){if(!D.integrationHealth?.available)return 'Health projection unavailable';var h=health.find(function(x){return x.dataset===dataset;});if(!h)return 'Awaiting activation';var age=Date.now()-Date.parse(h.checked_at);return (age>600000||age<0||!isFinite(age)?'Stale receipt · ':h.status+' · ')+h.coverage+' · '+h.checked_at;}
   var scope=research.available?'Latest '+rows.length+' server records'+(research.truncated?' · older history not loaded':''):'Server research projection unavailable';
   $("morrow-operations").innerHTML=active?'<div class="morrow-panels">'
     +panel('Data health',[['Alpaca SIP',feedStatus('alpaca_sip')],['Tiingo history',feedStatus('tiingo_eod')],['Tiingo news',feedStatus('tiingo_news')],['SEC filings',feedStatus('sec_submissions')],['SEC facts',feedStatus('sec_facts')],['BLS',feedStatus('bls_series')],['Dated macro',feedStatus('fred_vintage')],['Primary sources',feedStatus('primary_document')],['Research sync',scope],['Queue',D.proposalQueueStatus?.complete===false?D.proposalQueueStatus.reason:'Loaded']],'Keys and entitlement canaries are required before paid data can qualify an idea. Current board prices do not certify consolidated SIP coverage.')

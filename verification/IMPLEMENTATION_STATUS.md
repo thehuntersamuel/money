@@ -1,6 +1,6 @@
 # Current deployment status
 
-The backend is now deployed. Read [DEPLOYMENT_RECEIPT.md](DEPLOYMENT_RECEIPT.md) for reviewed source, migrations, function identities, live checks and remaining commissioning gates. Entries below are historical checkpoints; their statements that nothing was deployed are superseded by that receipt. Full handoff acceptance is not complete.
+The backend and responsive Hub UI are now deployed, and the historical close inconsistency is reconciled. Read [RELEASE_RECEIPT.md](RELEASE_RECEIPT.md) and [DEPLOYMENT_RECEIPT.md](DEPLOYMENT_RECEIPT.md) for reviewed source, migrations, function identities, live checks and remaining commissioning gates. Entries below are historical checkpoints; their statements that nothing was deployed are superseded by that receipt. Full handoff acceptance is not complete.
 
 # Money Hub / Morrow implementation checkpoint
 
