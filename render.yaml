@@ -1,0 +1,42 @@
+# Ready to provision only after Hunter approves the hosting cost/account access.
+# Worker remains inactive until secure credentials and licensing gates are verified.
+services:
+  - type: worker
+    name: morrow-alpaca-sip
+    runtime: node
+    plan: 0.5c-512mb
+    region: virginia
+    repo: https://github.com/thehuntersamuel/money
+    branch: main
+    autoDeployTrigger: 'off'
+    numInstances: 1
+    buildCommand: node --check server/sip-worker.mjs
+    startCommand: node server/sip-worker.mjs
+    maxShutdownDelaySeconds: 30
+    disk:
+      name: morrow-stream-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: MORROW_STATE_DIR
+        value: /var/data/morrow
+      - key: MORROW_STREAM_RUN_ID
+        value: commissioning-1
+      - key: MORROW_PARK_ON_FAILURE
+        value: 'true'
+      - key: MORROW_INGEST_ENABLED
+        value: 'false'
+      - key: ALPACA_LICENSE_APPROVED
+        value: 'false'
+      - key: ALPACA_ARCHIVE_APPROVED
+        value: 'false'
+      - key: MORROW_SYMBOLS
+        value: SPY,QQQ
+      - key: ALPACA_API_KEY_ID
+        sync: false
+      - key: ALPACA_API_SECRET_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
