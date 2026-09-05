@@ -1,3 +1,6 @@
+import { makeDiscovery } from '../../../server/discovery.mjs';
+import { fetchSource } from '../../../server/source-pipelines.mjs';
+import { ensureResearchWatchlist } from './watchlist.mjs';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import {
   buildStateProjection,
@@ -12,6 +15,7 @@ import {
 import { validateResearch, researchSummary } from './research.mjs';
 
 const EXPECTED_KEY_SHA256 = '3eb826f454f490f7c3e0a941d5f87c60c67b45bc2c16724d2717999cc4abca74';
+let discoveryGateway;
 const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store' };
 
 function reply(status: number, value: unknown) {
@@ -51,6 +55,21 @@ Deno.serve(async (request) => {
     const body = await request.json().catch(() => ({}));
     const operation = String(body.operation || 'state');
     const now = new Date().toISOString();
+
+    if(operation==='research_query'){
+      try{
+        const get=(key:string)=>Deno.env.get(key);
+        const config={alpacaKey:get('ALPACA_API_KEY_ID'),alpacaSecret:get('ALPACA_API_SECRET_KEY'),alpacaLicensed:get('ALPACA_LICENSE_APPROVED')==='true',alpacaArchiveApproved:get('ALPACA_ARCHIVE_APPROVED')==='true',alpacaDisplayAllowed:get('ALPACA_DISPLAY_APPROVED')==='true',tiingoKey:get('TIINGO_API_KEY'),tiingoLicensed:get('TIINGO_LICENSE_APPROVED')==='true',tiingoArchiveApproved:get('TIINGO_ARCHIVE_APPROVED')==='true',tiingoDisplayAllowed:get('TIINGO_DISPLAY_APPROVED')==='true',tiingoNewsApproved:get('TIINGO_NEWS_APPROVED')==='true',secUserAgent:get('SEC_USER_AGENT'),fredKey:get('FRED_API_KEY'),issuerHosts:(get('MORROW_ISSUER_HOSTS')||'').split(',').map(s=>s.trim()).filter(Boolean)};
+        if(JSON.stringify(body).length>4096)return reply(413,{error:'research request too large'});
+        let result;
+        if(body.action==='source'){
+          result=await fetchSource(body,{config});
+          if(result.blocked||result.displayAllowed===false)result={status:'blocked',reason:result.blocked||'source_display_not_approved'};
+          else result={status:'ok',...result};
+        }else {discoveryGateway ||= makeDiscovery({config});result=await discoveryGateway(body);}
+        return reply(200,{ok:true,operation,result,mutation_calls:0});
+      }catch{return reply(503,{error:'research provider unavailable or request invalid; no credentials or upstream bodies returned'});}
+    }
 
     const { data: books, error: bookError } = await db.from('v_paper_books').select('*').eq('label', 'Robinhood Savings').limit(1);
     if (bookError) throw bookError;
@@ -132,7 +151,8 @@ Deno.serve(async (request) => {
       if(!saved?.id) throw new Error('research write receipt missing');
       const {data:verified,error:verifyError}=await db.from('morrow_research_records').select('id,book_id,kind,idempotency_key,server_sha256').eq('id',saved.id).eq('book_id',book.book_id).single();
       if(verifyError||!verified||verified.server_sha256!==saved.server_sha256)throw new Error('research independent readback failed');
-      return reply(200,{ok:true,operation,receipt:{...verified,verified:true,at:now},mutation_calls:1});
+      const watchlist=record.kind==='decision'?await ensureResearchWatchlist(db,record.payload.symbol):null;
+      return reply(200,{ok:true,operation,receipt:{...verified,verified:true,at:now,watchlist},mutation_calls:watchlist?2:1});
     }
 
     if (operation === 'state') return reply(200, { ok: true, operation, state: await currentState(), mutation_calls: 0 });
@@ -192,10 +212,12 @@ Deno.serve(async (request) => {
       ) {
         throw verifyError || new Error('proposal read-back failed');
       }
+      const watchlist=await ensureResearchWatchlist(db,verified.symbol);
       return reply(200, {
         ok: true,
         operation,
         receipt: {
+          watchlist,
           id: verified.id,
           proposal_key: verified.proposal_key,
           thesis_version: verified.thesis_version,
@@ -208,7 +230,7 @@ Deno.serve(async (request) => {
           at: now,
         },
         state: await currentState(),
-        mutation_calls: 1,
+        mutation_calls: 2,
       });
     }
 

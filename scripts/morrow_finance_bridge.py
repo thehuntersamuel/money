@@ -217,14 +217,14 @@ def receipt_path(operation: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=["state", "data-read", "research-state", "add-scout", "record-proposal", "place-trade", "close-trade"])
+    parser.add_argument("operation", choices=["state", "research-query", "data-read", "research-state", "add-scout", "record-proposal", "place-trade", "close-trade"])
     parser.add_argument("--payload", type=Path)
     parser.add_argument("--state-path", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--receipt-path", type=Path)
     args = parser.parse_args()
     operation = args.operation.replace("-", "_")
     target_receipt = args.receipt_path or receipt_path(operation)
-    if operation in {"research_state", "data_read"}:
+    if operation in {"research_state", "data_read", "research_query"}:
         result = call_bridge(operation, load_payload(args.payload) if args.payload else {})
         atomic_json(target_receipt, result)
     elif operation == "state":

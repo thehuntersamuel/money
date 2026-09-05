@@ -60,3 +60,20 @@ test('quiet symbols retain stale coverage without consuming reconnect budget',as
  const health=await worker.checkHealth();assert.equal(health.status,'coverage_unknown_or_stale');
  assert.deepEqual(health.stale_symbols,['SPY']);assert(worker.isConnected());assert(!worker.isHealthy());assert(!socket.closed);worker.stop();
 });
+
+test('new research symbols subscribe on the same socket and wait for acknowledgement',async()=>{
+ const socket=new Socket(),stored=[];let sockets=0,clock='2026-09-04T15:00:00Z';
+ const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,fetchImpl:async()=>Response.json({trades:{}}),socketFactory:()=>{sockets++;return socket},store:async rows=>stored.push(...rows),calendar:async()=> 'regular',now:()=>clock});
+ socket.emit('message',[{T:'subscription',trades:['SPY']}]);await worker.drain();
+ await worker.updateSymbols(['AAPL','SPY']);
+ assert.equal(sockets,1);assert.deepEqual(socket.sent.at(-1),{action:'subscribe',trades:['AAPL']});assert(worker.isConnected());assert(!worker.isHealthy());
+ socket.emit('message',[{T:'subscription',trades:['SPY','AAPL']},{T:'t',S:'AAPL',p:200,i:2,t:clock}]);await worker.drain();
+ assert.equal(stored.at(-1).symbol,'AAPL');assert.equal(stored.at(-1).gap,false);
+ await worker.updateSymbols(['AAPL']);assert.deepEqual(socket.sent.at(-1),{action:'unsubscribe',trades:['SPY']});
+ socket.emit('message',[{T:'subscription',trades:['AAPL']}]);await worker.drain();assert(worker.isHealthy());worker.stop();
+});
+test('missing acknowledgement fails closed without inventing coverage',async()=>{
+ const socket=new Socket();let clock='2026-09-04T15:00:00Z';
+ const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,fetchImpl:async()=>Response.json({trades:{}}),socketFactory:()=>socket,store:async()=>{},calendar:async()=> 'regular',now:()=>clock});
+ socket.emit('message',[{T:'subscription',trades:['SPY']}]);await worker.drain();await worker.updateSymbols(['SPY','AAPL']);clock='2026-09-04T15:00:31Z';await worker.checkHealth();assert(socket.closed);assert(!worker.isConnected());
+});
