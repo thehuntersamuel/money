@@ -12,7 +12,6 @@ services:
     numInstances: 1
     buildCommand: node --check server/sip-worker.mjs
     startCommand: node server/sip-worker.mjs
-    maxShutdownDelaySeconds: 30
     disk:
       name: morrow-stream-state
       mountPath: /var/data
