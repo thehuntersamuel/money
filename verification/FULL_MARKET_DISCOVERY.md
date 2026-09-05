@@ -25,3 +25,7 @@ A proposal or decision write now also adds its symbol to the reference watchlist
 Source references: official Alpaca assets, historical stock bars, and streaming-market-data documentation; Tiingo end-of-day directory/metadata and news documentation. No real orders, transfers, new reasoning schedules, or champion/readiness activation.
 
 Rollback: restore the prior bridge bundle and worker commit. Preserve non-destructive watchlist additions and all paper close/entry safeguards. Do not delete research or reset reconnect state.
+
+## Release receipt
+
+Merged PR #5 to main as `ba206d25927e72d3641e1666efcb01d6c839ddf1`. CI run `33946084005` passed, including native PostgreSQL concurrent lifecycle tests. Local suite: 75 Node tests + 21 Python tests passed. Supabase `morrow-bridge` version 11 deployed; independent function readback matched all nine bundle files. Live GET returned 405 and unauthenticated research-query returned 401. Authenticated live provider queries remain blocked by the recorded configuration gates; Render/Mac deployment is not claimed complete.
