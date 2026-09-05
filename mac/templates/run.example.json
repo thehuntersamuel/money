@@ -1,0 +1,16 @@
+{
+  "job_id": "REPLACE_WITH_EXISTING_JOB_ID",
+  "started_at": "2026-09-05T00:00:00Z",
+  "finished_at": "2026-09-05T00:01:00Z",
+  "status": "blocked",
+  "actual_provider": null,
+  "actual_model": null,
+  "actual_reasoning_effort": null,
+  "runtime_evidence_id": null,
+  "input_ids": [],
+  "output_ids": [],
+  "blockers": [
+    "actual runtime metadata unavailable",
+    "paid feeds deferred"
+  ]
+}

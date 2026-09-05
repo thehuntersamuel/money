@@ -1,0 +1,11 @@
+{
+  "url": "https://example.com/TEST-release",
+  "title": "TEST fixture \u2014 replace with verified primary source",
+  "source_type": "issuer",
+  "released_at": "2026-09-05T00:00:00Z",
+  "retrieved_at": "2026-09-05T00:01:00Z",
+  "accession": null,
+  "vintage": null,
+  "content_sha256": null,
+  "retention_note": "Metadata only; confirm permitted retention"
+}

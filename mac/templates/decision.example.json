@@ -1,0 +1,20 @@
+{
+  "proposal_key": "TEST:SPY:v1",
+  "symbol": "SPY",
+  "disposition": "watch",
+  "horizon": "swing",
+  "thesis": "TEST fixture, not investment research",
+  "bear_case": "Evidence not collected",
+  "catalyst": "Unknown",
+  "review_at": "2026-09-06T14:00:00Z",
+  "strategy_id": null,
+  "source_ids": [],
+  "event_ids": [],
+  "assumptions": [],
+  "missing_data": [
+    "licensed SIP unavailable",
+    "primary research not collected"
+  ],
+  "benchmark": "SPY",
+  "sync_receipt_id": null
+}
