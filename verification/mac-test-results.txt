@@ -1,0 +1,55 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test
+> node --test tests/*.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'
+
+✔ official half-day, holiday absence and DST are distinguished (34.469139ms)
+✔ supplied close patch reproduces ambiguous SQL and rolls back unchanged (45.963491ms)
+✔ atomic linked close, exact retry and immutable receipt (13.63159ms)
+✔ legacy manual paper close remains supported (4.391268ms)
+✔ real, wrong-book and symbol mismatches fail without partial mutation (21.04508ms)
+✔ receipt insertion failure rolls back trade AND proposal (7.990704ms)
+✔ unauthorized roles cannot close or read private receipts (7.006357ms)
+✔ numeric nonfinite values and blank notes are rejected (12.240172ms)
+✔ durable TEST crossing persists after receding price and duplicates do not multiply (11.509911ms)
+✔ new Savings openings fail closed in the database (1.027581ms)
+✔ rollback refuses to disable exits with existing paper exposure (2.708067ms)
+(node:30) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ unauthorized/method failures perform no database operations (56.578559ms)
+✔ new openings fail closed before any mutation (21.136841ms)
+✔ state reads are bounded and mutation-free (5.771169ms)
+✔ SIP worker requires subscription, serializes durable writes and reports disconnect (14.955159ms)
+✔ persistence failure stops streaming rather than dropping observations silently (0.683261ms)
+✔ store is scoped to the approved project and ignores duplicate source IDs (1.20291ms)
+✔ explicit SIP, bounded GET-only routes, no credential query strings (5.194206ms)
+✔ 429 retries bounded; 401 fails closed without secret/body leakage (1.238723ms)
+✔ pagination preserves incomplete coverage and detects cursor loops (1.022202ms)
+✔ observations preserve event time and default to TEST/unknown coverage (0.287746ms)
+✔ paper fill uses executable side and rejects stale, gap and insufficient size (0.292333ms)
+✔ Tiingo raw and adjusted values stay separate, unknown stays null (0.225754ms)
+✔ intended pin cannot certify actual execution or permit trading (0.784351ms)
+morrow bridge contract: state, scout, trade, close gates passed
+✔ tests/morrow_bridge_contract.test.mjs (90.1341ms)
+morrow bridge proposal endpoint contract passed
+✔ tests/morrow_bridge_proposal_endpoint.test.mjs (88.937802ms)
+trade preflight contract: 10 calculation cases and UI wiring passed
+✔ tests/trade_preflight.test.mjs (84.441799ms)
+trade proposals migration and rollback contract passed
+✔ tests/trade_proposals_migration.test.mjs (97.909898ms)
+trade proposal UI contract and URL safety passed
+✔ tests/trade_proposals_ui.test.mjs (91.522356ms)
+✔ all inline scripts parse as modules, queue options close correctly (60.142563ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2285.062963
+....................
+----------------------------------------------------------------------
+Ran 20 tests in 1.607s
+
+OK

@@ -1,0 +1,122 @@
+{
+  "verified_at": "2026-09-04T21:26:04.136393-04:00",
+  "scope": "configured jobs, not proof of a new model invocation",
+  "job_count": 7,
+  "inference_jobs": 6,
+  "local_inference_jobs": 0,
+  "global_fallback": "openai-codex/gpt-5.4 (unchanged; no local fallback)",
+  "jobs": [
+    {
+      "id": "0a1797b7e2e2",
+      "name": "Morrow | Morning research and scouting",
+      "schedule": {
+        "kind": "cron",
+        "expr": "45 9 * * 1-5",
+        "display": "45 9 * * 1-5"
+      },
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "reasoning_effort": "high",
+      "deliver": "discord:1538620913426366486",
+      "monitor_script": null,
+      "no_agent": false,
+      "enabled": true
+    },
+    {
+      "id": "d4a3fe8b1946",
+      "name": "Morrow | Midday paper portfolio monitor",
+      "schedule": {
+        "kind": "cron",
+        "expr": "15,45 10-15 * * 1-5",
+        "display": "15,45 10-15 * * 1-5"
+      },
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "reasoning_effort": "high",
+      "deliver": "discord:1538620913426366486",
+      "monitor_script": "morrow_proposal_trigger.py",
+      "no_agent": false,
+      "enabled": true
+    },
+    {
+      "id": "51e4decec41b",
+      "name": "Morrow | Closing score and journal",
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 16 * * 1-5",
+        "display": "20 16 * * 1-5"
+      },
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "reasoning_effort": "high",
+      "deliver": "discord:1538620913426366486",
+      "monitor_script": null,
+      "no_agent": false,
+      "enabled": true
+    },
+    {
+      "id": "36e97d7dbfe1",
+      "name": "Morrow | Weekly Maddox executive review",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 18 * * 0",
+        "display": "0 18 * * 0"
+      },
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "reasoning_effort": "high",
+      "deliver": "discord:1538620913426366486",
+      "monitor_script": null,
+      "no_agent": false,
+      "enabled": true
+    },
+    {
+      "id": "4718bc248f30",
+      "name": "Morrow | Weekly research lab and governance audit",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 11 * * 6",
+        "display": "0 11 * * 6"
+      },
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "reasoning_effort": "high",
+      "deliver": "discord:1538620913426366486",
+      "monitor_script": null,
+      "no_agent": false,
+      "enabled": true
+    },
+    {
+      "id": "2f8a80689531",
+      "name": "Morrow | 60-day capital strategist retrospective",
+      "schedule": {
+        "kind": "once",
+        "run_at": "2026-10-26T18:30:00-04:00",
+        "display": "once at 2026-10-26 18:30"
+      },
+      "model": "gpt-5.6-sol",
+      "provider": "openai-codex",
+      "reasoning_effort": "high",
+      "deliver": "discord:1538620913426366486",
+      "monitor_script": null,
+      "no_agent": false,
+      "enabled": true
+    },
+    {
+      "id": "87e2acc68f2c",
+      "name": "Morrow | Cron safety guard",
+      "schedule": {
+        "kind": "interval",
+        "minutes": 30,
+        "display": "every 30m"
+      },
+      "model": null,
+      "provider": null,
+      "reasoning_effort": null,
+      "deliver": "discord:1538620913426366486",
+      "monitor_script": null,
+      "no_agent": true,
+      "enabled": true
+    }
+  ]
+}

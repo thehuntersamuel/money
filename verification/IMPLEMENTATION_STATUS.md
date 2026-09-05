@@ -66,3 +66,13 @@ Keep new openings disabled first. If any paper exposure exists, preserve the rep
 - Live proposal text measured 11.5px; form labels 9px. Patched proposal text is now 14px with 1.65 line-height, labels 12px, and more separation between research fields.
 - Isolated preview uses synthetic fixtures with backend calls disabled. Its Vite server started successfully through supported preview tooling, but browser access remained blocked. No phone-width screenshot or patched rendering was certified.
 - UI module syntax test passed after these edits. No deployment, trade mutation or provider activation occurred. Hunter subsequently approved public branch publication; this checkpoint is being published for draft review.
+
+## Mac research setup follow-up
+
+Hunter authorized preparing the Mac/Morrow integration and deferred adding Alpaca/Tiingo. Provider keys remain server-side; the Mac uses its existing narrow bridge credential. Main-branch source and deployed Supabase capabilities are distinct.
+
+Added a macOS-gated installer with preflight, private before-file backups, drift checks and rollback; read-only seven-job configuration doctor; append-only local research/strategy/outcome/run sidecars with idempotency and concurrent-write tests; templates; and exact Maddox installation/job amendment instructions in `mac/MORROW_MAC_HANDOFF.md`. No jobs are created or edited by the installer. No credentials are read by the doctor. No provider, scheduler service, server worker or Supabase deployment is started by this setup.
+
+The Mac bridge client now blocks new paper openings before loading credentials/network, uses the current user's home paths, rejects unsafe credential ownership/symlinks, refuses HTTP redirects, and omits server error bodies from logs. Local records are explicitly not Hub-synced and cannot certify actual model routes or activate a champion. Providers remain disabled, calendar unknown, evaluation not started.
+
+Validation after this change: `npm test` exit 0, 30 Node test entries and 20 Python tests; `git diff --check` exit 0. Installer tests exercise temporary fixture directories, not an actual Mac installation. Mac access remains unavailable here, so installation, supported per-job prompt updates, actual run telemetry and readback remain Maddox's local acceptance work. Backend/provider/UI deployment gates above remain unchanged.

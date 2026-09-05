@@ -12,14 +12,17 @@ from pathlib import Path
 from typing import Any, Callable
 
 ENDPOINT = "https://fglbxoafbebsryjeqcbu.supabase.co/functions/v1/morrow-bridge"
-KEY_PATH = Path("/Users/maddox/.hermes/secrets/morrow-bridge-key")
-DEFAULT_STATE = Path("/Users/maddox/Projects/Hunter/maddox-command/capital/morrow/paper-state.json")
-DEFAULT_RECEIPTS = Path("/Users/maddox/Projects/Hunter/maddox-command/capital/morrow/bridge-receipts")
+KEY_PATH = Path.home() / ".hermes/secrets/morrow-bridge-key"
+DEFAULT_STATE = Path.home() / "Projects/Hunter/maddox-command/capital/morrow/paper-state.json"
+DEFAULT_RECEIPTS = Path.home() / "Projects/Hunter/maddox-command/capital/morrow/bridge-receipts"
 
 
 def load_key() -> str:
     try:
-        mode = KEY_PATH.stat().st_mode & 0o777
+        metadata = KEY_PATH.lstat()
+        if KEY_PATH.is_symlink() or metadata.st_uid != os.getuid():
+            raise RuntimeError("Morrow Finance bridge credential ownership is unsafe")
+        mode = metadata.st_mode & 0o777
         if mode != 0o600:
             raise RuntimeError("Morrow Finance bridge credential permissions are unsafe")
         key = KEY_PATH.read_text(encoding="utf-8").strip()
@@ -52,6 +55,11 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
         temp.unlink(missing_ok=True)
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise RuntimeError("Finance bridge redirects are not permitted")
+
+
 def call_bridge(
     operation: str,
     payload: dict[str, Any] | None = None,
@@ -59,6 +67,8 @@ def call_bridge(
     endpoint: str = ENDPOINT,
     key_loader: Callable[[], str] = load_key,
 ) -> dict[str, Any]:
+    if operation == "place_trade":
+        raise RuntimeError("New paper openings are disabled pending verified deployment and readiness")
     key = key_loader()
     body = {"operation": operation, **(payload or {})}
     request = urllib.request.Request(
@@ -68,11 +78,10 @@ def call_bridge(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
             value = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"Finance bridge HTTP {exc.code}: {detail}") from exc
+        raise RuntimeError(f"Finance bridge HTTP {exc.code}; response body omitted") from None
     if not isinstance(value, dict) or value.get("ok") is not True:
         raise RuntimeError("Finance bridge returned an invalid response")
     return value
@@ -202,7 +211,7 @@ def mutate(
 
 def receipt_path(operation: str) -> Path:
     from datetime import datetime, timezone
-    stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d-%H%M%S")
+    stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d-%H%M%S-%f")
     return DEFAULT_RECEIPTS / f"{stamp}-{operation}.json"
 
 
