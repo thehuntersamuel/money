@@ -82,16 +82,38 @@ await test('numeric nonfinite values and blank notes are rejected',async()=>{
 });
 await test('durable TEST crossing persists after receding price and duplicates do not multiply',async()=>{
  const id=await fixture();
- await db.query("update trade_proposals set state='watch',decision='wait_for_trigger',trade_id=null,trigger_direction='above',trigger_price=101,last_researched_at=now()-interval '1 hour' where trade_id=$1",[id]);
+ await db.query("update trade_proposals set state='watch',decision='wait_for_trigger',trade_id=null,trigger_direction='above',trigger_price=101,thesis_version=thesis_version+1,last_researched_at=clock_timestamp() where trade_id=$1",[id]);
  const insert = (source,price) => db.query("insert into morrow_market_observations(source_id,symbol,provider,feed,event_at,session,last,gap,is_test) values($1,'SPY','alpaca','sip',now(),'regular',$2,false,false)",[source,price]);
  await insert('TEST-crossing',102); await insert('TEST-receding',100);
  assert.equal((await db.query('select count(*)::int n from morrow_trigger_events')).rows[0].n,1);
  await insert('TEST-crossing-again',103);
  assert.equal((await db.query('select count(*)::int n from morrow_trigger_events')).rows[0].n,1);
  await assert.rejects(()=>insert('TEST-crossing',102),/unique/);
+ const p=(await db.query('select id,thesis_version from trade_proposals where proposal_key=$1',[id])).rows[0];
+ await assert.rejects(()=>db.query("update trade_proposals set review_on=current_date+1 where id=$1",[p.id]),/next thesis version/);
+ await db.query("update trade_proposals set review_on=current_date+1,thesis_version=thesis_version+1,last_researched_at=clock_timestamp() where id=$1",[p.id]);
+ assert.equal((await db.query('select * from morrow_current_trigger_events where proposal_id=$1',[p.id])).rows.length,0);
+ await insert('TEST-new-version-crossing',103);
+ assert.equal((await db.query('select * from morrow_current_trigger_events where proposal_id=$1',[p.id])).rows.length,1);
+ assert.equal((await db.query('select * from morrow_trigger_events where proposal_id=$1',[p.id])).rows.length,2);
 });
 await test('new Savings openings fail closed in the database',async()=>{
  await assert.rejects(()=>db.query("insert into trades(book_id,symbol,status) values($1,'SPY','open')",[book]),/openings blocked/);
+});
+await test('readiness blocks reopening, inbound book moves, reclassification and deletion',async()=>{
+ await assert.rejects(()=>db.query("update paper_books set label='Other' where id=$1",[book]),/scope is immutable/);
+ await assert.rejects(()=>db.query('delete from paper_books where id=$1',[book]),/Preserve Morrow/);
+ const legacy=await fixture({linked:false});
+ await db.query("update trades set status='closed',exit_price=102,closed_on=current_date where id=$1",[legacy]);
+ await assert.rejects(()=>db.query("update trades set status='open' where id=$1",[legacy]),/openings blocked/);
+ await assert.rejects(()=>db.query('delete from trades where id=$1',[legacy]),/Preserve Morrow/);
+ const {rows:[retirement]}=await db.query("insert into trades(book_id,symbol,qty,entry_price) values($1,'QQQ',1,100) returning id",[other]);
+ await assert.rejects(()=>db.query('update trades set book_id=$1 where id=$2',[book,retirement.id]),/openings blocked/);
+ const open=await fixture({linked:false});
+ await assert.rejects(()=>db.query('update trades set is_real=true where id=$1',[open]),/openings blocked|immutable/);
+ await assert.rejects(()=>db.query('update trades set qty=qty+1 where id=$1',[open]),/immutable/);
+ await assert.rejects(()=>db.query('update trades set book_id=$1 where id=$2',[other,open]),/immutable/);
+ await close(open);
 });
 await test('rollback refuses to disable exits with existing paper exposure',async()=>{
  await assert.rejects(()=>db.exec(readFileSync(new URL('../supabase/rollbacks/20260830020000_morrow_trade_close_lifecycle.rollback.sql',import.meta.url),'utf8')),/paper exposure remains/);

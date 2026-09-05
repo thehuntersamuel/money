@@ -10,6 +10,12 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
  if(typeof store!=='function'||typeof calendar!=='function')throw new Error('durable store and official calendar required');
  const api=makeMarketData({keyId,secret,licensed,fetchImpl});
  let healthy=false,closed=false,pending=0,queue=Promise.resolve();
+ let subscribedAt=null,lastMessageAt=null,lastPersistedAt=null,lastEventAt=null,currentSession='unknown';
+ const persistedEvents=new Map();
+ const age=at=>at?Date.parse(now())-Date.parse(at):Infinity;
+ const activeSession=()=>['regular','extended'].includes(currentSession);
+ const fresh=()=>symbols.every(symbol=>age(persistedEvents.get(symbol))<=120000);
+ const stalled=()=>healthy&&activeSession()&&age(subscribedAt)>120000&&(!fresh()||age(lastMessageAt)>120000||age(lastPersistedAt)>120000);
  // Recover the preceding hour. A bounded recovery does not certify earlier gaps.
  const end=now(),start=new Date(Date.parse(end)-3600000).toISOString();
  const recovered=await api.backfillTrades(symbols,start,end);
@@ -25,6 +31,7 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
  socket.addEventListener('open',()=>socket.send(JSON.stringify({action:'auth',key:keyId,secret})));
  socket.addEventListener('message',event=>{
   if(closed)return;
+  lastMessageAt=now();
   if(++pending>100){void fail('stream_backpressure_gap');return;}
   queue=queue.then(async()=>{
    if(closed)return;
@@ -38,7 +45,8 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
       healthy=Array.isArray(row.trades)&&symbols.every(s=>row.trades.includes(s));
       if(!healthy)throw new Error('incomplete_stream_subscription');
       // Close the REST-to-WebSocket handoff interval; duplicates share source IDs.
-      const subscribedAt=now();
+      subscribedAt=now();
+      currentSession=await calendar(subscribedAt);
       if(Date.parse(subscribedAt)>Date.parse(end)) {
         const overlap=await api.backfillTrades(symbols,end,subscribedAt);
         coverageComplete=coverageComplete&&overlap.coverage_complete;
@@ -55,12 +63,27 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
       batch.push(normalizeTrade(row.S,row,{receivedAt:now(),session:await calendar(row.t),gap:!coverageComplete,isTest:false}));
     }
    }
-   if(batch.length)await store(batch); // Failure closes socket; supervisor must replay before reconnecting.
+   if(batch.length){
+    await store(batch); // Mark freshness only after the durable write succeeds.
+    lastPersistedAt=now();
+    for(const row of batch){
+     if(!persistedEvents.has(row.symbol)||row.event_at>persistedEvents.get(row.symbol))persistedEvents.set(row.symbol,row.event_at);
+     if(!lastEventAt||row.event_at>lastEventAt)lastEventAt=row.event_at;
+    }
+   }
   }).catch(()=>fail('stream_or_persistence_failure')).finally(()=>{pending--;});
  });
  socket.addEventListener('close',()=>{healthy=false;closed=true;try{void Promise.resolve(onHealth({status:'disconnected',at:now(),coverage:'gap_until_replay'})).catch(()=>{});}catch{/* Remain disconnected. */}});
  socket.addEventListener('error',()=>{void fail('stream_connection_failure');});
- return {stop:()=>{closed=true;healthy=false;socket.close();},drain:()=>queue,isHealthy:()=>healthy};
+ return {stop:()=>{closed=true;healthy=false;socket.close();},drain:()=>queue,
+  isHealthy:()=>healthy&&!closed&&!stalled(),
+  checkHealth:async()=>{
+   currentSession=await calendar(now());
+   if(stalled())await fail('stream_stale_coverage_gap');
+   return {status:healthy&&activeSession()&&fresh()?'observations_fresh':'coverage_unknown_or_stale',
+    connected:healthy&&!closed,session:currentSession,last_message_at:lastMessageAt,
+    last_event_at:lastEventAt,last_persisted_at:lastPersistedAt,backfill_complete:coverageComplete};
+  }};
 }
 
 export function supabaseObservationStore({url,serviceRole,fetchImpl=fetch}) {

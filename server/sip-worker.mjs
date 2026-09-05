@@ -11,7 +11,7 @@ export async function supervise({connect,signal,sleep=ms=>new Promise(r=>setTime
    // Allow subscription/replay handshake. Missing health never becomes ready by default.
    for(let i=0;i<60&&!signal.aborted&&!worker.isHealthy();i++)await sleep(1000);
    let ticks=0;
-   while(!signal.aborted&&worker.isHealthy()){await sleep(1000);await worker.drain();if(++ticks%30===0)await onHeartbeat();}
+   while(!signal.aborted&&worker.isHealthy()){await sleep(1000);await worker.drain();const health=worker.checkHealth?await worker.checkHealth():null;if(++ticks%30===0)await onHeartbeat(health);}
    if(signal.aborted)return {stopped:true};
   }catch{onFailure({reason:'connection_or_persistence_failure',attempt:attempt+1});}
   finally{worker?.stop();if(worker)await worker.drain().catch(()=>{});}
@@ -30,10 +30,10 @@ async function main(){
  const calendar=makeCalendar({keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY});
  const abort=new AbortController();for(const name of ['SIGINT','SIGTERM'])process.once(name,()=>abort.abort());
  const onHealth=async value=>{
-  const status=['sip_subscribed','stream_connected'].includes(value.status)?'ok':value.status==='bounded_replay_complete'?'blocked':'failed';
-  const r=await fetch(`${url}/rest/v1/morrow_integration_health`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,'content-type':'application/json',prefer:'return=minimal'},body:JSON.stringify({dataset:'alpaca_sip',checked_at:new Date().toISOString(),status,detail:String(value.status).slice(0,200),coverage:value.backfill_complete===true?'bounded_replay_complete_earlier_unknown':'gap_or_unknown'})});
+  const status=value.status==='observations_fresh'?'ok':['sip_subscribed','bounded_replay_complete','coverage_unknown_or_stale'].includes(value.status)?'blocked':'failed';
+  const r=await fetch(`${url}/rest/v1/morrow_integration_health`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,'content-type':'application/json',prefer:'return=minimal'},body:JSON.stringify({dataset:'alpaca_sip',checked_at:new Date().toISOString(),status,detail:JSON.stringify({status:value.status,event_at:value.last_event_at||null,persisted_at:value.last_persisted_at||null,session:value.session||'unknown'}).slice(0,200),coverage:value.backfill_complete===true?'bounded_replay_complete_earlier_unknown':'gap_or_unknown'})});
   if(!r.ok)throw Error('health persistence failed');
  };
- await supervise({signal:abort.signal,onHeartbeat:()=>onHealth({status:'stream_connected',backfill_complete:false}),connect:()=>connectSip({symbols,keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY,licensed:true,store,calendar,onHealth})});
+ await supervise({signal:abort.signal,onHeartbeat:health=>onHealth(health||{status:'coverage_unknown_or_stale'}),connect:()=>connectSip({symbols,keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY,licensed:true,store,calendar,onHealth})});
 }
 if(import.meta.url===new URL(process.argv[1]||'', 'file://').href)main().catch(()=>{console.error('Morrow SIP worker stopped; inspect readiness and server configuration.');process.exitCode=1;});

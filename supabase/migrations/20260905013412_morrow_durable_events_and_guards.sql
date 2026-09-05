@@ -43,6 +43,15 @@ create policy owner_select on public.morrow_trigger_events for select to authent
 create trigger immutable_trigger_event before update or delete on public.morrow_trigger_events
 for each row execute function public.morrow_receipt_immutable();
 
+-- Historical thesis events must never consume the active monitor's bounded query.
+create view public.morrow_current_trigger_events with (security_invoker=true) as
+ select e.id,e.proposal_id,e.thesis_version,e.observed_at,p.book_id
+ from public.morrow_trigger_events e join public.trade_proposals p
+ on p.id=e.proposal_id and p.thesis_version=e.thesis_version
+ where p.state in ('watch','qualified','opened');
+revoke all on public.morrow_current_trigger_events from public,anon,authenticated;
+grant select on public.morrow_current_trigger_events to authenticated,service_role;
+
 create or replace function public.morrow_capture_crossing() returns trigger
 language plpgsql security invoker set search_path=public,pg_temp as $$
 begin
@@ -76,6 +85,28 @@ grant select,insert on public.morrow_proposal_history to service_role;
 create policy owner_select on public.morrow_proposal_history for select to authenticated using(public.is_owner());
 create trigger immutable_proposal_history before update or delete on public.morrow_proposal_history
 for each row execute function public.morrow_receipt_immutable();
+-- A reviewed thesis advances exactly one version. Lifecycle-only close updates
+-- preserve the version, and exact retries cannot acknowledge another event.
+create function public.morrow_proposal_version_guard() returns trigger language plpgsql security invoker
+set search_path=public,pg_temp as $$
+declare ignored text[] := array['state','decision','trade_id','trigger_status','updated_at','thesis_version'];
+begin
+ if new.thesis_version < old.thesis_version or new.thesis_version > old.thesis_version+1 then
+  raise exception 'Thesis version must stay unchanged or advance exactly one';
+ end if;
+ if (to_jsonb(new)-ignored) is distinct from (to_jsonb(old)-ignored)
+    and new.thesis_version <> old.thesis_version+1 then
+  raise exception 'Reviewed thesis changes require the next thesis version';
+ end if;
+ if new.thesis_version=old.thesis_version+1 and new.last_researched_at<=old.last_researched_at then
+  raise exception 'New thesis version requires a newer research timestamp';
+ end if;
+ return new;
+end; $$;
+revoke all on function public.morrow_proposal_version_guard() from public,anon,authenticated;
+create trigger morrow_proposal_version_guard before update on public.trade_proposals
+for each row execute function public.morrow_proposal_version_guard();
+
 create function public.morrow_preserve_proposal() returns trigger language plpgsql security invoker
 set search_path=public,pg_temp as $$ begin
  if tg_op='UPDATE' then
@@ -88,6 +119,32 @@ revoke all on function public.morrow_preserve_proposal() from public,anon,authen
 create trigger preserve_proposal after insert or update on public.trade_proposals
 for each row execute function public.morrow_preserve_proposal();
 
+-- Keep the label-based bridge scope stable and prevent cascaded ledger deletion.
+create function public.morrow_book_guard() returns trigger language plpgsql security invoker
+set search_path=public,pg_temp as $$ begin
+ if tg_op='INSERT' then
+  if new.label='Robinhood Savings' and exists(select 1 from public.paper_books where label=new.label) then
+   raise exception 'Morrow book scope must remain unique';
+  end if;
+  return new;
+ end if;
+ if old.label='Robinhood Savings' then
+  if tg_op='DELETE' then raise exception 'Preserve Morrow book and ledger'; end if;
+  if new.id is distinct from old.id or new.label is distinct from old.label then
+   raise exception 'Morrow book scope is immutable';
+  end if;
+ elsif tg_op='UPDATE' and new.label='Robinhood Savings' then
+  raise exception 'Morrow book scope is immutable';
+ end if;
+ if tg_op='DELETE' then return old; end if;
+ return new;
+end; $$;
+revoke all on function public.morrow_book_guard() from public,anon,authenticated;
+create trigger morrow_book_guard before insert or update or delete on public.paper_books
+for each row execute function public.morrow_book_guard();
+-- TRUNCATE bypasses row triggers/RLS; browser roles have no need to own triggers.
+revoke truncate,trigger on public.paper_books,public.trades from anon,authenticated;
+
 -- Prevent direct UI mutations from bypassing the repair/readiness gates.
 -- This rollout intentionally leaves new Savings openings disabled at the DB boundary.
 create function public.morrow_trade_guard() returns trigger language plpgsql security invoker
@@ -98,6 +155,22 @@ begin
    raise exception 'Morrow openings blocked until verified readiness and champion activation';
   end if;
   return new;
+ end if;
+ -- Updates must not manufacture exposure by reopening a legacy close, moving
+ -- another book's position in, or changing an existing paper position to real.
+ if tg_op='UPDATE' and new.status='open'
+   and exists(select 1 from public.paper_books b where b.id=new.book_id and b.label='Robinhood Savings')
+   and (old.status is distinct from 'open' or old.book_id is distinct from new.book_id
+     or old.is_real is distinct from new.is_real) then
+  raise exception 'Morrow openings blocked until verified readiness and champion activation';
+ end if;
+ if exists(select 1 from public.paper_books b where b.id=old.book_id and b.label='Robinhood Savings') then
+  if tg_op='DELETE' then raise exception 'Preserve Morrow trade history; close through the paper bridge'; end if;
+  if old.status='open' and (new.book_id is distinct from old.book_id or new.is_real is distinct from old.is_real
+    or new.symbol is distinct from old.symbol or new.direction is distinct from old.direction
+    or new.qty is distinct from old.qty or new.entry_price is distinct from old.entry_price) then
+   raise exception 'Morrow position identity and exposure are immutable';
+  end if;
  end if;
  if exists(select 1 from public.morrow_close_receipts r where r.trade_id=old.id) then
   raise exception 'Canonical closed trade is immutable; preserve corrections as separate records';

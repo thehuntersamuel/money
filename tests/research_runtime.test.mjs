@@ -40,6 +40,7 @@ test('SEC point-in-time facts exclude later restatements and undated accessions'
 test('ROI excludes shadow, refuses unmatched/missing costs and removes best outcome',()=>{
  const rows=[1,2].map(i=>({id:String(i),cohort:'paper',capital:1000,gross_pnl:i*100,benchmark_pnl:50,cash_pnl:1,fees:2,slippage:3,receipt_id:'TEST:'+i,baseline_exposure_matched:true,matured_at:'2026-09-04T21:00:00Z',entry_at:'2026-09-01T15:00:00Z',exit_at:'2026-09-04T20:00:00Z'}));
  const opts={periodStart:'2026-09-01T00:00:00Z',periodEnd:'2026-09-05T00:00:00Z',fixedCosts:99};
+ assert.throws(()=>evaluateOpportunities([rows[0],{...rows[0],id:'different-id'}],opts),/duplicate canonical close receipt/);
  const r=evaluateOpportunities([...rows,{id:'shadow',cohort:'shadow'}],opts);assert.equal(r.net_active_result,191);assert.equal(r.benchmark_excess,91);assert.equal(r.best_opportunity_removed,-54);assert.equal(r.shadow_count,1);
  assert.equal(evaluateOpportunities(rows,{...opts,fixedCosts:null}).net_active_result,null);
  assert.equal(evaluateOpportunities([{...rows[0],baseline_exposure_matched:false}],opts).net_active_result,null);

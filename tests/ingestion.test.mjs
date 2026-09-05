@@ -29,3 +29,25 @@ test('store is scoped to the approved project and ignores duplicate source IDs',
  const store=supabaseObservationStore({url:'https://fglbxoafbebsryjeqcbu.supabase.co',serviceRole:'TEST',fetchImpl:async(url,options)=>{assert.equal(url.searchParams.get('on_conflict'),'source_id');assert.match(options.headers.prefer,/ignore-duplicates/);return new Response(null,{status:201});}});
  await store([{source_id:'TEST'}]);
 });
+
+test('regular-session silence loses health and closes for replay; unknown sessions never certify freshness',async()=>{
+ let clock='2026-09-04T15:00:00Z',session='regular';const socket=new Socket(),health=[];
+ const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,
+  fetchImpl:async()=>Response.json({trades:{SPY:[]}}),socketFactory:()=>socket,store:async()=>{},
+  calendar:async()=>session,now:()=>clock,onHealth:async value=>health.push(value)});
+ socket.emit('message',[{T:'subscription',trades:['SPY']}]);await worker.drain();
+ assert.equal((await worker.checkHealth()).status,'coverage_unknown_or_stale');
+ clock='2026-09-04T19:00:00Z';assert.equal(worker.isHealthy(),false);
+ await worker.checkHealth();assert(socket.closed);assert.equal(health.at(-1).reason,'stream_stale_coverage_gap');
+});
+test('successful writes expose event freshness separately from heartbeat',async()=>{
+ let clock='2026-09-04T15:00:00Z',session='regular';const socket=new Socket();
+ const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,
+  fetchImpl:async()=>Response.json({trades:{SPY:[]}}),socketFactory:()=>socket,store:async()=>{},
+  calendar:async()=>session,now:()=>clock});
+ socket.emit('message',[{T:'subscription',trades:['SPY']},{T:'t',S:'SPY',p:100,i:1,t:clock}]);await worker.drain();
+ assert.equal((await worker.checkHealth()).status,'observations_fresh');
+ session='unknown';clock='2026-09-05T15:00:00Z';
+ const status=await worker.checkHealth();assert.equal(status.status,'coverage_unknown_or_stale');
+ assert.equal(status.last_event_at,'2026-09-04T15:00:00Z');worker.stop();
+});

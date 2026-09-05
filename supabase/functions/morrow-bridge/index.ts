@@ -63,15 +63,17 @@ Deno.serve(async (request) => {
         db.from('watchlist').select('symbol,note').order('symbol', { ascending: true }),
         db.from('trade_proposals')
           .select('id,proposal_key,symbol,state,decision,trigger_direction,trigger_price,trigger_status,review_on,news_checked_at,setup,horizon,benchmark,entry_price,target_price,stop_price,entry_condition,thesis,bear_case,catalyst,invalidation,evidence,source_freshness,last_researched_at,thesis_version')
-          .eq('book_id', book.book_id).order('updated_at', { ascending: false }).limit(50),
+          .eq('book_id', book.book_id).in('state', ['watch','qualified','opened']).order('id', { ascending: true }).limit(501),
       ]);
       if (tradeResult.error) throw tradeResult.error;
       if (boardResult.error) throw boardResult.error;
       if (proposalResult.error) throw proposalResult.error;
       const proposals = proposalResult.data || [];
-      const eventResult = await db.from('morrow_trigger_events')
-        .select('id,proposal_id,thesis_version,observed_at').in('proposal_id', proposals.map(p => p.id)).limit(500);
+      if (proposals.length > 500) throw new Error('Active proposal coverage exceeds monitor capacity; state unavailable');
+      const eventResult = await db.from('morrow_current_trigger_events')
+        .select('id,proposal_id,thesis_version,observed_at').eq('book_id', book.book_id).order('proposal_id', {ascending:true}).limit(501);
       if (eventResult.error) throw eventResult.error;
+      if ((eventResult.data || []).length > 500) throw new Error('Trigger event coverage exceeds monitor capacity');
       for (const p of proposals) {
         const event = (eventResult.data || []).find(e => e.proposal_id === p.id && e.thesis_version === p.thesis_version);
         p.trigger_event_id = event?.id || null;
@@ -101,14 +103,14 @@ Deno.serve(async (request) => {
       const {data,error}=await db.from('morrow_data_snapshots').select('id,provider,dataset,received_at,display_allowed,payload').eq('dataset',dataset).eq('display_allowed',true).order('received_at',{ascending:false}).limit(1);
       if(error)return reply(503,{error:'data projection unavailable'});
       let observations=[];
-      if(dataset==='alpaca_sip'&&data?.length){
+      if(dataset==='alpaca_sip'){
         const symbols=body.symbols;
         if(symbols!=null&&(!Array.isArray(symbols)||symbols.length>30||symbols.some(s=>typeof s!=='string'||!/^[A-Z][A-Z0-9.-]{0,9}$/.test(s))))return reply(400,{error:'invalid bounded symbols'});
         let q=db.from('morrow_market_observations').select('source_id,symbol,provider,feed,event_at,received_at,session,bid,ask,last,gap,is_test').eq('is_test',false).order('event_at',{ascending:false}).limit(100);
         if(symbols?.length)q=q.in('symbol',symbols);
         const observed=await q;if(observed.error)return reply(503,{error:'observation projection unavailable'});observations=observed.data||[];
       }
-      return reply(200,{ok:true,operation,dataset,snapshot:data?.[0]||null,observations,observation_limit:100,status:data?.length?'snapshot_available_check_timestamp':'data_unavailable',mutation_calls:0});
+      return reply(200,{ok:true,operation,dataset,snapshot:data?.[0]||null,observations,observation_limit:100,status:observations.length?'observations_available_check_timestamp':data?.length?'snapshot_available_check_timestamp':'data_unavailable',mutation_calls:0});
     }
     if (operation === 'research_state') {
       const limit = 100;
@@ -160,7 +162,7 @@ Deno.serve(async (request) => {
       }
       proposal.source_evidence_hash = computedEvidenceHash;
       const { data: existing, error: existingError } = await db.from('trade_proposals')
-        .select('id,state,source_evidence_hash')
+        .select('id,state,source_evidence_hash,thesis_version')
         .eq('book_id', book.book_id).eq('proposal_key', proposal.proposal_key).maybeSingle();
       if (existingError) throw existingError;
       const writeAction = proposalWriteAction(existing, proposal);
@@ -173,7 +175,7 @@ Deno.serve(async (request) => {
       } else if (writeAction === 'update') {
         if (!existing) throw new Error('proposal update requires an existing row');
         const { data: updated, error: updateError } = await db.from('trade_proposals')
-          .update(proposal).eq('id', existing.id).eq('state', existing.state).select('id').single();
+          .update(proposal).eq('id', existing.id).eq('state', existing.state).eq('thesis_version',existing.thesis_version).select('id').single();
         if (updateError || !updated) throw updateError || new Error('proposal state changed during update');
         proposalId = updated.id;
       }

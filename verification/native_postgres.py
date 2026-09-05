@@ -55,7 +55,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
  # advisory lock gives a deterministic barrier without changing tested function SQL.
  lock_id=873201
  def edit_proposal():
-  return sql(f"begin; select pg_advisory_lock({lock_id}); select id from trade_proposals where trade_id='{tid}' for update; select pg_sleep(1); update trade_proposals set thesis='TEST concurrent revision' where trade_id='{tid}'; commit; select pg_advisory_unlock({lock_id});")
+  return sql(f"begin; select pg_advisory_lock({lock_id}); select id from trade_proposals where trade_id='{tid}' for update; select pg_sleep(1); update trade_proposals set thesis='TEST concurrent revision',thesis_version=thesis_version+1,last_researched_at=clock_timestamp() where trade_id='{tid}'; commit; select pg_advisory_unlock({lock_id});")
  edit=pool.submit(edit_proposal)
  import time
  deadline=time.monotonic()+10
