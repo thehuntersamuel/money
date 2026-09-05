@@ -10,7 +10,7 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
  if(typeof store!=='function'||typeof calendar!=='function')throw new Error('durable store and official calendar required');
  const api=makeMarketData({keyId,secret,licensed,fetchImpl});
  let healthy=false,closed=false,pending=0,queue=Promise.resolve();
- let subscribedAt=null,lastMessageAt=null,lastPersistedAt=null,lastEventAt=null,currentSession='unknown';
+ let subscribedAt=null,lastMessageAt=null,lastPersistedAt=null,lastEventAt=null,currentSession='unknown',lastProbeAt=null;
  const persistedEvents=new Map();
  const age=at=>at?Date.parse(now())-Date.parse(at):Infinity;
  const activeSession=()=>['regular','extended'].includes(currentSession);
@@ -76,12 +76,22 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
  socket.addEventListener('close',()=>{healthy=false;closed=true;try{void Promise.resolve(onHealth({status:'disconnected',at:now(),coverage:'gap_until_replay'})).catch(()=>{});}catch{/* Remain disconnected. */}});
  socket.addEventListener('error',()=>{void fail('stream_connection_failure');});
  return {stop:()=>{closed=true;healthy=false;socket.close();},drain:()=>queue,
+  isConnected:()=>healthy&&!closed,
   isHealthy:()=>healthy&&!closed&&!stalled(),
   checkHealth:async()=>{
    currentSession=await calendar(now());
-   if(stalled())await fail('stream_stale_coverage_gap');
+   // Silence may be a quiet symbol. Compare bounded REST evidence before
+   // classifying the connection as stalled; freshness remains blocked meanwhile.
+   if(stalled()&&age(lastProbeAt)>120000){
+    lastProbeAt=now();
+    try{
+     const probe=await api.backfillTrades(symbols,new Date(Date.parse(now())-120000).toISOString(),now());
+     if(!probe.coverage_complete)await fail('stream_liveness_reconciliation_incomplete');
+     else if(probe.records.some(({symbol,row})=>!persistedEvents.has(symbol)||row.t>persistedEvents.get(symbol)))await fail('stream_stale_coverage_gap');
+    }catch{await fail('stream_liveness_reconciliation_failed');}
+   }
    return {status:healthy&&activeSession()&&fresh()?'observations_fresh':'coverage_unknown_or_stale',
-    connected:healthy&&!closed,session:currentSession,last_message_at:lastMessageAt,
+    connected:healthy&&!closed,session:currentSession,stale_symbols:symbols.filter(s=>age(persistedEvents.get(s))>120000),last_message_at:lastMessageAt,
     last_event_at:lastEventAt,last_persisted_at:lastPersistedAt,backfill_complete:coverageComplete};
   }};
 }

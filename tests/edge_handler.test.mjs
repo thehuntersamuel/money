@@ -14,7 +14,15 @@ const raw=readFileSync(new URL('../supabase/functions/morrow-bridge/index.ts',im
 function harness({rows={},approved=false}={}){
  let handler;let clients=0;let mutations=0;const tables=[];
  const book={book_id:'TEST-book',label:'Robinhood Savings',equity:10000,buying_power:10000};
- const db={from(table){tables.push(table);const q={then(resolve){return Promise.resolve({data:table==='v_paper_books'?[book]:(rows[table]||[]),error:null}).then(resolve)}};for(const method of ['select','eq','limit','order','in'])q[method]=()=>q;return q;},rpc(){mutations++;throw new Error('unexpected mutation')}};
+ const db={from(table){tables.push(table);let one=false,patch=null;
+  const result=()=>{
+   if(patch){mutations++;Object.assign(rows[table][0],patch);patch=null;}
+   const data=table==='v_paper_books'?[book]:(rows[table]||[]);
+   return {data:one?(data[0]||null):data,error:null};
+  };
+  const q={then(resolve){return Promise.resolve(result()).then(resolve)},update(value){patch=value;return q},single(){one=true;return q},maybeSingle(){one=true;return q}};
+  for(const method of ['select','eq','limit','order','in'])q[method]=()=>q;return q;
+ },rpc(){mutations++;throw new Error('unexpected mutation')}};
  const context={...contract,...research,Response,Request,URL,TextEncoder,crypto,Date,Intl,createClient(){clients++;return db;},Deno:{env:{get:name=>approved&&/_(LICENSE|DISPLAY)_APPROVED$/.test(name)?'true':'TEST-only'},serve(fn){handler=fn;}}};
  vm.runInNewContext(stripTypeScriptTypes(raw),context);
  return {call:(operation,{authenticated=true,method='POST',payload={}}={})=>handler(new Request('https://example.test',{method,headers:authenticated?{authorization:`Bearer ${key}`}:{},...(method==='POST'?{body:JSON.stringify({operation,...payload})}:{})})),tables:()=>tables,counts:()=>({clients,mutations})};
@@ -46,4 +54,19 @@ test('continuous SIP observations are readable without a snapshot',async()=>{
 test('active proposal overflow fails explicitly instead of returning partial coverage',async()=>{
  const h=harness({rows:{trade_proposals:Array.from({length:501},(_,i)=>({id:String(i)}))}});
  assert.notEqual((await h.call('state')).status,200);
+});
+
+test('bridge read-revise-read preserves the thesis version in state and write receipt',async()=>{
+ const proposal={proposal_key:'TEST-version',symbol:'SPY',asset_name:'TEST',asset_type:'etf',state:'watch',direction:'long',setup:'swing',horizon:'short',benchmark:'SPY',
+ observed_at:'2026-09-04T15:00:00Z',observed_price:100,entry_price:100,target_price:110,stop_price:95,
+ entry_condition:'TEST',trigger_direction:'above',trigger_price:100,review_on:'2026-09-07',confidence:50,
+ thesis:'TEST',bull_case:'TEST',bear_case:'TEST',catalyst:'TEST',invalidation:'TEST',
+ evidence:[{url:'https://example.com/filing',title:'TEST',retrieved_at:'2026-09-04T14:00:00Z',source_type:'primary'},{url:'https://example.com/release',title:'TEST release',retrieved_at:'2026-09-04T14:00:00Z',source_type:'primary'}],
+ source_freshness:'fresh',news_checked_at:'2026-09-04T15:00:00Z',decision:'wait_for_trigger',thesis_version:3};
+ const h=harness({rows:{trade_proposals:[{...proposal,id:'TEST-proposal'}]}});
+ const before=await (await h.call('state')).json();assert.equal(before.state.proposals[0].thesis_version,3);
+ const revised={...proposal,thesis_version:before.state.proposals[0].thesis_version+1,news_checked_at:'2026-09-04T15:10:00Z',thesis:'TEST revised'};
+ const response=await h.call('record_proposal',{payload:{proposal:revised}}),body=await response.json();
+ assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.receipt.thesis_version,4);
+ const after=await (await h.call('state')).json();assert.equal(after.state.proposals[0].thesis_version,4);assert.equal(after.state.proposals[0].thesis,'TEST revised');
 });

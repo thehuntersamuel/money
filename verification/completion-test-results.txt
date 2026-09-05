@@ -3,71 +3,73 @@ npm warn Unknown env config "http-proxy". This will stop working in the next maj
 > test
 > node --test tests/*.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'
 
-✔ official half-day, holiday absence and DST are distinguished (15.883518ms)
-✔ supplied close patch reproduces ambiguous SQL and rolls back unchanged (15.481685ms)
-✔ atomic linked close, exact retry and immutable receipt (13.184666ms)
-✔ legacy manual paper close remains supported (3.55529ms)
-✔ real, wrong-book and symbol mismatches fail without partial mutation (17.266856ms)
-✔ receipt insertion failure rolls back trade AND proposal (8.400428ms)
-✔ unauthorized roles cannot close or read private receipts (6.096239ms)
-✔ numeric nonfinite values and blank notes are rejected (12.027063ms)
-✔ durable TEST crossing persists after receding price and duplicates do not multiply (16.490217ms)
-✔ new Savings openings fail closed in the database (0.828065ms)
-✔ readiness blocks reopening, inbound book moves, reclassification and deletion (11.297934ms)
-✔ rollback refuses to disable exits with existing paper exposure (1.285351ms)
-✔ missing keys write a blocked health receipt without contacting providers (1.402014ms)
-✔ Tiingo persists normalized snapshot with raw display disabled by default (4.489823ms)
-✔ persistent health failure prevents a success response (0.508593ms)
-✔ SIP replay is honestly limited and persists durable observations (14.63386ms)
-(node:40) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+✔ official half-day, holiday absence and DST are distinguished (12.673882ms)
+✔ supplied close patch reproduces ambiguous SQL and rolls back unchanged (23.330638ms)
+✔ atomic linked close, exact retry and immutable receipt (14.106481ms)
+✔ legacy manual paper close remains supported (3.848314ms)
+✔ real, wrong-book and symbol mismatches fail without partial mutation (17.035815ms)
+✔ receipt insertion failure rolls back trade AND proposal (11.514786ms)
+✔ unauthorized roles cannot close or read private receipts (6.213743ms)
+✔ numeric nonfinite values and blank notes are rejected (11.667263ms)
+✔ durable TEST crossing persists after receding price and duplicates do not multiply (16.468155ms)
+✔ new Savings openings fail closed in the database (0.768888ms)
+✔ readiness blocks reopening, inbound book moves, reclassification and deletion (13.784445ms)
+✔ rollback refuses to disable exits with existing paper exposure (1.406511ms)
+✔ missing keys write a blocked health receipt without contacting providers (1.37202ms)
+✔ Tiingo persists normalized snapshot with raw display disabled by default (3.998827ms)
+✔ persistent health failure prevents a success response (0.423526ms)
+✔ SIP replay is honestly limited and persists durable observations (13.712248ms)
+(node:36) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ unauthorized/method failures perform no database operations (56.361554ms)
-✔ new openings fail closed before any mutation (11.912244ms)
-✔ state reads are bounded and mutation-free (4.649539ms)
-✔ paid data read rejects unsupported datasets before storage access (11.721952ms)
-✔ revoked paid display permission hides previously stored snapshots (6.455981ms)
-✔ continuous SIP observations are readable without a snapshot (5.202507ms)
-✔ active proposal overflow fails explicitly instead of returning partial coverage (3.592475ms)
-✔ SIP worker requires subscription, serializes durable writes and reports disconnect (5.46089ms)
-✔ persistence failure stops streaming rather than dropping observations silently (0.654088ms)
-✔ store is scoped to the approved project and ignores duplicate source IDs (0.597043ms)
-✔ regular-session silence loses health and closes for replay; unknown sessions never certify freshness (0.873372ms)
-✔ successful writes expose event freshness separately from heartbeat (0.614559ms)
-✔ explicit SIP, bounded GET-only routes, no credential query strings (3.876015ms)
-✔ 429 retries bounded; 401 fails closed without secret/body leakage (0.994081ms)
-✔ pagination preserves incomplete coverage and detects cursor loops (0.950947ms)
-✔ observations preserve event time and default to TEST/unknown coverage (0.293754ms)
-✔ paper fill uses executable side and rejects stale, gap and insufficient size (0.487721ms)
-✔ Tiingo raw and adjusted values stay separate, unknown stays null (0.179024ms)
-✔ intended pin cannot certify actual execution or permit trading (0.60158ms)
+✔ unauthorized/method failures perform no database operations (40.923057ms)
+✔ new openings fail closed before any mutation (11.321315ms)
+✔ state reads are bounded and mutation-free (4.261786ms)
+✔ paid data read rejects unsupported datasets before storage access (2.572196ms)
+✔ revoked paid display permission hides previously stored snapshots (4.187736ms)
+✔ continuous SIP observations are readable without a snapshot (2.201177ms)
+✔ active proposal overflow fails explicitly instead of returning partial coverage (2.506689ms)
+✔ bridge read-revise-read preserves the thesis version in state and write receipt (5.614867ms)
+✔ SIP worker requires subscription, serializes durable writes and reports disconnect (7.345258ms)
+✔ persistence failure stops streaming rather than dropping observations silently (0.828205ms)
+✔ store is scoped to the approved project and ignores duplicate source IDs (0.79472ms)
+✔ regular-session silence loses health and closes for replay; unknown sessions never certify freshness (1.096793ms)
+✔ successful writes expose event freshness separately from heartbeat (0.666456ms)
+✔ quiet symbols retain stale coverage without consuming reconnect budget (3.983935ms)
+✔ explicit SIP, bounded GET-only routes, no credential query strings (3.627687ms)
+✔ 429 retries bounded; 401 fails closed without secret/body leakage (1.154408ms)
+✔ pagination preserves incomplete coverage and detects cursor loops (0.894703ms)
+✔ observations preserve event time and default to TEST/unknown coverage (0.281948ms)
+✔ paper fill uses executable side and rejects stale, gap and insufficient size (0.321345ms)
+✔ Tiingo raw and adjusted values stay separate, unknown stays null (0.170032ms)
+✔ intended pin cannot certify actual execution or permit trading (1.153527ms)
 morrow bridge contract: state, scout, trade, close gates passed
-✔ tests/morrow_bridge_contract.test.mjs (57.51508ms)
+✔ tests/morrow_bridge_contract.test.mjs (82.042666ms)
 morrow bridge proposal endpoint contract passed
-✔ tests/morrow_bridge_proposal_endpoint.test.mjs (69.872363ms)
-✔ research contract rejects keys, activation, future sources and missing references (2.215677ms)
-✔ server immutable record idempotency, owner RLS and reference validation (1628.857404ms)
-✔ Tiingo is gated, bounded and never sends tokens in URLs (5.478625ms)
-✔ SEC point-in-time facts exclude later restatements and undated accessions (0.693055ms)
-✔ ROI excludes shadow, refuses unmatched/missing costs and removes best outcome (0.552347ms)
-✔ persistent worker enforces reconnect budget (1.870367ms)
-✔ shutdown stops and drains the active worker (0.330068ms)
+✔ tests/morrow_bridge_proposal_endpoint.test.mjs (91.208857ms)
+✔ research contract rejects keys, activation, future sources and missing references (1.984366ms)
+✔ server immutable record idempotency, owner RLS and reference validation (1563.524848ms)
+✔ Tiingo is gated, bounded and never sends tokens in URLs (5.322655ms)
+✔ SEC point-in-time facts exclude later restatements and undated accessions (0.708959ms)
+✔ ROI excludes shadow, refuses unmatched/missing costs and removes best outcome (0.519048ms)
+✔ persistent worker enforces reconnect budget (1.182349ms)
+✔ shutdown stops and drains the active worker (0.308527ms)
 trade preflight contract: 10 calculation cases and UI wiring passed
-✔ tests/trade_preflight.test.mjs (90.062043ms)
+✔ tests/trade_preflight.test.mjs (110.610053ms)
 trade proposals migration and rollback contract passed
-✔ tests/trade_proposals_migration.test.mjs (55.511357ms)
+✔ tests/trade_proposals_migration.test.mjs (80.586781ms)
 trade proposal UI contract and URL safety passed
-✔ tests/trade_proposals_ui.test.mjs (71.382507ms)
-✔ all inline scripts parse as modules, queue options close correctly (73.702709ms)
-ℹ tests 48
+✔ tests/trade_proposals_ui.test.mjs (84.167189ms)
+✔ all inline scripts parse as modules, queue options close correctly (68.910727ms)
+ℹ tests 50
 ℹ suites 0
-ℹ pass 48
+ℹ pass 50
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 2028.423803
+ℹ duration_ms 1835.080491
 .....................
 ----------------------------------------------------------------------
-Ran 21 tests in 1.603s
+Ran 21 tests in 1.565s
 
 OK

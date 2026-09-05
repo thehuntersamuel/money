@@ -181,7 +181,7 @@ Deno.serve(async (request) => {
       }
       if (!proposalId) throw new Error('proposal write did not produce an id');
       const { data: verified, error: verifyError } = await db.from('trade_proposals')
-        .select('id,proposal_key,symbol,state,decision,news_checked_at,source_evidence_hash')
+        .select('id,proposal_key,symbol,state,decision,news_checked_at,source_evidence_hash,thesis_version')
         .eq('id', proposalId).single();
       if (
         verifyError
@@ -198,6 +198,7 @@ Deno.serve(async (request) => {
         receipt: {
           id: verified.id,
           proposal_key: verified.proposal_key,
+          thesis_version: verified.thesis_version,
           symbol: verified.symbol,
           state: verified.state,
           decision: verified.decision,

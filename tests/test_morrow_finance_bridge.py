@@ -43,7 +43,7 @@ class Handler(BaseHTTPRequestHandler):
                 'market_board_items': 2,
                 'market_board': [{'symbol': 'SPY', 'note': None}, {'symbol': 'QQQ', 'note': None}],
                 'proposal_count': 1,
-                'proposals': [{
+                'proposals': [{'thesis_version': 3,
                     'id': 'proposal-1', 'proposal_key': 'run:SPY:v1', 'symbol': 'SPY',
                     'state': 'watch', 'decision': 'wait_for_trigger',
                     'trigger_direction': 'above', 'trigger_price': 101,
@@ -110,6 +110,7 @@ class MorrowFinanceBridgeTests(unittest.TestCase):
             self.assertEqual([item['symbol'] for item in state['market_board']], ['SPY', 'QQQ'])
             self.assertEqual(state['proposal_count'], 1)
             self.assertEqual(state['proposals'][0]['proposal_key'], 'run:SPY:v1')
+            self.assertEqual(state['proposals'][0]['thesis_version'], 3)
             self.assertEqual(state['proposals'][0]['bear_case'], 'Inflation reaccelerates.')
             self.assertEqual(state['capital_book']['book'], 'Robinhood Savings')
             self.assertEqual(state['mutations'], 0)

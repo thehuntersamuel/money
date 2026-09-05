@@ -33,7 +33,7 @@ test('store is scoped to the approved project and ignores duplicate source IDs',
 test('regular-session silence loses health and closes for replay; unknown sessions never certify freshness',async()=>{
  let clock='2026-09-04T15:00:00Z',session='regular';const socket=new Socket(),health=[];
  const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,
-  fetchImpl:async()=>Response.json({trades:{SPY:[]}}),socketFactory:()=>socket,store:async()=>{},
+  fetchImpl:async()=>Response.json({trades:{SPY:clock.includes('19:')?[{p:100,i:99,t:clock}]:[]}}),socketFactory:()=>socket,store:async()=>{},
   calendar:async()=>session,now:()=>clock,onHealth:async value=>health.push(value)});
  socket.emit('message',[{T:'subscription',trades:['SPY']}]);await worker.drain();
  assert.equal((await worker.checkHealth()).status,'coverage_unknown_or_stale');
@@ -50,4 +50,13 @@ test('successful writes expose event freshness separately from heartbeat',async(
  session='unknown';clock='2026-09-05T15:00:00Z';
  const status=await worker.checkHealth();assert.equal(status.status,'coverage_unknown_or_stale');
  assert.equal(status.last_event_at,'2026-09-04T15:00:00Z');worker.stop();
+});
+
+test('quiet symbols retain stale coverage without consuming reconnect budget',async()=>{
+ let clock='2026-09-04T15:00:00Z';const socket=new Socket();
+ const worker=await connectSip({symbols:['SPY'],keyId:'TEST',secret:'TEST',licensed:true,
+  fetchImpl:async()=>Response.json({trades:{SPY:[]}}),socketFactory:()=>socket,store:async()=>{},calendar:async()=> 'regular',now:()=>clock});
+ socket.emit('message',[{T:'subscription',trades:['SPY']}]);await worker.drain();clock='2026-09-04T19:00:00Z';
+ const health=await worker.checkHealth();assert.equal(health.status,'coverage_unknown_or_stale');
+ assert.deepEqual(health.stale_symbols,['SPY']);assert(worker.isConnected());assert(!worker.isHealthy());assert(!socket.closed);worker.stop();
 });

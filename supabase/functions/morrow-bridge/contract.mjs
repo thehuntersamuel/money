@@ -104,6 +104,7 @@ export function buildStateProjection(book, trades, watchlist, proposals, quotes,
       return {
         id: row.id,
         proposal_key: row.proposal_key,
+        thesis_version: row.thesis_version,
         symbol,
         state: row.state,
         decision: row.decision,

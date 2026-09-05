@@ -137,7 +137,7 @@ def monitor_projection(response: dict[str, Any]) -> dict[str, Any]:
             {
                 key: item.get(key)
                 for key in (
-                    "id", "proposal_key", "symbol", "state", "decision",
+                    "id", "proposal_key", "symbol", "state", "decision", "thesis_version",
                     "trigger_direction", "trigger_price", "trigger_status",
                     "review_on", "news_checked_at", "quote_price",
                     "quote_fetched_at", "quote_error", "setup", "horizon",

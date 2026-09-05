@@ -35,7 +35,7 @@ const book = {
     }],
     [{ symbol: 'SPY' }, { symbol: 'QQQ' }],
     [{
-      id: 'p1', proposal_key: 'run:SPY:v1', symbol: 'SPY', state: 'watch',
+      id: 'p1', proposal_key: 'run:SPY:v1', symbol: 'SPY', state: 'watch', thesis_version: 3,
       decision: 'wait_for_trigger', trigger_direction: 'above', trigger_price: 101,
       trigger_status: 'watching', review_on: '2026-08-29', news_checked_at: '2026-08-28T16:30:00Z',
       setup: 'swing', horizon: 'short', benchmark: 'SPY', entry_price: 101,
@@ -49,6 +49,7 @@ const book = {
     '2026-08-28T16:40:00Z',
   );
   assert.equal(state.schema, 2);
+  assert.equal(state.proposals[0].thesis_version,3);
   assert.equal(state.authentication_verified, true);
   assert.equal(state.book.label, 'Robinhood Savings');
   assert.equal(state.open_paper_positions, 1);
@@ -62,7 +63,7 @@ const book = {
   assert.deepEqual(state.market_board, [{ symbol: 'SPY', note: null }, { symbol: 'QQQ', note: null }]);
   assert.equal(state.proposal_count, 1);
   assert.deepEqual(state.proposals[0], {
-    id: 'p1', proposal_key: 'run:SPY:v1', symbol: 'SPY', state: 'watch',
+    id: 'p1', proposal_key: 'run:SPY:v1', symbol: 'SPY', state: 'watch', thesis_version: 3,
     decision: 'wait_for_trigger', trigger_direction: 'above', trigger_price: 101,
     trigger_status: 'watching', review_on: '2026-08-29', news_checked_at: '2026-08-28T16:30:00Z',
     setup: 'swing', horizon: 'short', benchmark: 'SPY', entry_price: 101,
