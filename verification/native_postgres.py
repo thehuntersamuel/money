@@ -16,14 +16,13 @@ def sql(statement,ok=True):
  if not ok and not p.returncode: raise AssertionError('Expected SQL rejection')
  return p.stdout.strip() if ok else p.stderr
 
-# The same minimized fixture as the PostgreSQL-engine tests. This proves native
-# concurrency, not compatibility with every production schema/grant dependency.
-source=(ROOT/'tests/close_postgres.test.mjs').read_text()
-base=re.search(r'await db.exec\(`([\s\S]*?)`\);',source).group(1)
-sql(base)
-for path in sorted((ROOT/'supabase/migrations').glob('*.sql')): sql(path.read_text())
+# Exact affected table columns/constraints/indexes/RLS/grants from live catalog.
+# accounts/auth.users identities are synthetic; no live data enters CI.
+sql((ROOT/'tests/fixtures/live_scoped_schema.sql').read_text())
+for path in sorted((ROOT/'supabase/migrations').glob('*.sql')):
+ if path.name!='20260830000000_morrow_trade_proposals.sql':sql(path.read_text())
 BOOK='10000000-0000-0000-0000-000000000001'
-sql(f"insert into paper_books values('{BOOK}','Robinhood Savings')")
+sql(f"insert into accounts values('{BOOK}'); insert into paper_books(id,account_id,label) values('{BOOK}','{BOOK}','Robinhood Savings')")
 
 def fixture(n):
  tid=f'20000000-0000-0000-0000-{n:012d}'
@@ -70,4 +69,15 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
  opened=pool.submit(sql,f"insert into trades(book_id,symbol,qty,entry_price) values('{BOOK}','SPY',1,100)",False)
  closed=pool.submit(sql,close(tid));assert 'openings blocked' in opened.result();closed.result()
  print('PASS native opening guard / close: opening blocked, exit succeeds')
-print('Native multi-session fixture rehearsal passed. Exact live-schema rehearsal and independent review remain separate gates.')
+# Exercise actual owner policies and browser grants using synthetic JWT identities.
+OWNER='30000000-0000-0000-0000-000000000001'
+OTHER='30000000-0000-0000-0000-000000000002'
+sql(f"insert into auth.users values('{OWNER}'),('{OTHER}'); insert into app_owner(user_id,email) values('{OWNER}','owner@example.test')")
+assert sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; select count(*) from morrow_close_receipts").splitlines()[-1]=='4'
+assert sql(f"set role authenticated; set request.jwt.claim.sub='{OTHER}'; select count(*) from morrow_close_receipts").splitlines()[-1]=='0'
+assert 'permission denied' in sql('set role anon; select * from morrow_close_receipts',False)
+assert 'permission denied' in sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; truncate trades",False)
+assert 'openings blocked' in sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; insert into trades(book_id,symbol,qty,entry_price) values('{BOOK}','SPY',1,100)",False)
+assert 'permission denied' in sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; select * from morrow_market_observations",False)
+print('PASS captured owner RLS/grants: owner receipts, nonowner/anon denial, no raw observations or TRUNCATE')
+print('Native scoped live-schema rehearsal passed; external auth/account services remain synthetic.')
