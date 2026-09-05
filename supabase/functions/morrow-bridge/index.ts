@@ -97,10 +97,10 @@ Deno.serve(async (request) => {
 
     if (operation === 'data_read') {
       const dataset=String(body.dataset||'');
-      if(!['alpaca_sip','tiingo_eod','sec_submissions'].includes(dataset))return reply(400,{error:'unsupported dataset'});
-      const providerPrefix=dataset==='alpaca_sip'?'ALPACA':dataset==='tiingo_eod'?'TIINGO':null;
-      if(providerPrefix&&(Deno.env.get(providerPrefix+'_LICENSE_APPROVED')!=='true'||Deno.env.get(providerPrefix+'_DISPLAY_APPROVED')!=='true'))return reply(200,{ok:true,operation,dataset,snapshot:null,observations:[],status:'data_unavailable',reason:'current_provider_use_not_approved',mutation_calls:0});
-      const {data,error}=await db.from('morrow_data_snapshots').select('id,provider,dataset,received_at,display_allowed,payload').eq('dataset',dataset).eq('display_allowed',true).order('received_at',{ascending:false}).limit(1);
+      if(!['alpaca_sip','tiingo_eod','sec_submissions','tiingo_news','sec_company_map','sec_facts','bls_series','fred_vintage','primary_document'].includes(dataset))return reply(400,{error:'unsupported dataset'});
+      const providerPrefix=dataset==='alpaca_sip'?'ALPACA':dataset.startsWith('tiingo_')?'TIINGO':null;
+      if(providerPrefix&&(Deno.env.get(providerPrefix+'_LICENSE_APPROVED')!=='true'||Deno.env.get(providerPrefix+'_DISPLAY_APPROVED')!=='true'||Deno.env.get(providerPrefix+'_ARCHIVE_APPROVED')!=='true'||(dataset==='tiingo_news'&&Deno.env.get('TIINGO_NEWS_APPROVED')!=='true')))return reply(200,{ok:true,operation,dataset,snapshot:null,observations:[],status:'data_unavailable',reason:'current_provider_use_not_approved',mutation_calls:0});
+      const {data,error}=await db.from('morrow_data_snapshots').select('id,provider,dataset,received_at,display_allowed,payload,provenance').eq('dataset',dataset).eq('display_allowed',true).order('received_at',{ascending:false}).limit(1);
       if(error)return reply(503,{error:'data projection unavailable'});
       let observations=[];
       if(dataset==='alpaca_sip'){

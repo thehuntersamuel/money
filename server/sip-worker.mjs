@@ -24,7 +24,7 @@ export async function supervise({connect,signal,sleep=ms=>new Promise(r=>setTime
 async function main(){
  if(process.env.MORROW_INGEST_ENABLED!=='true'){console.log(JSON.stringify({status:'disabled',new_openings_allowed:false}));return;}
  const env=process.env;
- if(env.ALPACA_LICENSE_APPROVED!=='true'||!env.ALPACA_API_KEY_ID||!env.ALPACA_API_SECRET_KEY||!env.SUPABASE_SERVICE_ROLE_KEY)throw Error('server licensing or credential configuration missing');
+ if(env.ALPACA_LICENSE_APPROVED!=='true'||env.ALPACA_ARCHIVE_APPROVED!=='true'||!env.ALPACA_API_KEY_ID||!env.ALPACA_API_SECRET_KEY||!env.SUPABASE_SERVICE_ROLE_KEY)throw Error('server licensing or credential configuration missing');
  const symbols=universe((env.MORROW_SYMBOLS||'SPY').split(',').map(s=>s.trim()));
  const url='https://fglbxoafbebsryjeqcbu.supabase.co';
  const store=supabaseObservationStore({url,serviceRole:env.SUPABASE_SERVICE_ROLE_KEY});

@@ -144,6 +144,10 @@ create trigger morrow_book_guard before insert or update or delete on public.pap
 for each row execute function public.morrow_book_guard();
 -- TRUNCATE bypasses row triggers/RLS; browser roles have no need to own triggers.
 revoke truncate,trigger on public.paper_books,public.trades from anon,authenticated;
+-- Owner registration must never be erasable through browser-role TRUNCATE.
+do $$ begin if to_regclass('public.app_owner') is not null then
+ revoke truncate on public.app_owner from anon,authenticated;
+end if; end $$;
 
 -- Prevent direct UI mutations from bypassing the repair/readiness gates.
 -- This rollout intentionally leaves new Savings openings disabled at the DB boundary.

@@ -13,7 +13,7 @@ Deno.serve(async request=>{
   const body=JSON.parse(text);
   const db=createClient(Deno.env.get('SUPABASE_URL')!,secret,{auth:{persistSession:false,autoRefreshToken:false}});
   const get=(key)=>Deno.env.get(key);
-  const config={alpacaKey:get('ALPACA_API_KEY_ID'),alpacaSecret:get('ALPACA_API_SECRET_KEY'),alpacaLicensed:get('ALPACA_LICENSE_APPROVED')==='true',alpacaDisplayAllowed:get('ALPACA_DISPLAY_APPROVED')==='true',tiingoKey:get('TIINGO_API_KEY'),tiingoLicensed:get('TIINGO_LICENSE_APPROVED')==='true',tiingoDisplayAllowed:get('TIINGO_DISPLAY_APPROVED')==='true',secUserAgent:get('SEC_USER_AGENT')};
+  const config={alpacaKey:get('ALPACA_API_KEY_ID'),alpacaSecret:get('ALPACA_API_SECRET_KEY'),alpacaLicensed:get('ALPACA_LICENSE_APPROVED')==='true',alpacaDisplayAllowed:get('ALPACA_DISPLAY_APPROVED')==='true',tiingoKey:get('TIINGO_API_KEY'),tiingoLicensed:get('TIINGO_LICENSE_APPROVED')==='true',tiingoDisplayAllowed:get('TIINGO_DISPLAY_APPROVED')==='true',secUserAgent:get('SEC_USER_AGENT'),alpacaArchiveApproved:get('ALPACA_ARCHIVE_APPROVED')==='true',tiingoArchiveApproved:get('TIINGO_ARCHIVE_APPROVED')==='true',tiingoNewsApproved:get('TIINGO_NEWS_APPROVED')==='true',fredKey:get('FRED_API_KEY'),issuerHosts:(get('MORROW_ISSUER_HOSTS')||'').split(',').map(s=>s.trim()).filter(Boolean)};
   const result=await ingestOnce(body,{config,db});
   return reply(result.status==='failed'?503:200,{ok:result.status!=='failed',...result});
  }catch{return reply(503,{error:'ingestion unavailable; no credentials or upstream bodies logged'});}

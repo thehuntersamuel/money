@@ -897,6 +897,17 @@ async function q(view, opts){
   return out;
 }
 
+async function loadProposalQueue(){
+  var rows=[];
+  for(var page=0;page<20;page++){
+    var r=await sb.from("trade_proposals").select("*").order("id",{ascending:true}).range(page*500,page*500+499);
+    if(r.error)return {rows:rows,complete:false,reason:"Research could not be fully loaded. Refresh before reviewing."};
+    rows=rows.concat(r.data||[]);
+    if((r.data||[]).length<500)return {rows:rows,complete:true};
+  }
+  return {rows:rows,complete:false,reason:"Research history exceeds this view. Some records are not shown."};
+}
+
 async function loadAll(){
   /* Keyed, not positional. This used to be a Promise.all over an array read
      back as res[0]..res[19], so deleting one query silently shifted every
@@ -910,11 +921,11 @@ async function loadAll(){
     session:   function(){ return q("market_session"); },
     watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
     trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
-    integrationHealth: function(){return sb.from("morrow_integration_health").select("dataset,checked_at,status,detail,coverage").order("checked_at",{ascending:false}).limit(30).then(function(r){return {available:!r.error,rows:r.data||[]};});},
+    integrationHealth: function(){return sb.from("morrow_latest_integration_health").select("dataset,checked_at,status,detail,coverage").order("checked_at",{ascending:false}).limit(30).then(function(r){return {available:!r.error,rows:r.data||[]};});},
     research: function(){ return sb.from("morrow_research_records")
       .select("id,book_id,kind,created_at,payload,server_sha256").order("created_at",{ascending:false}).limit(101)
       .then(function(r){return {available:!r.error,rows:(r.data||[]).slice(0,100),truncated:(r.data||[]).length>100};}); },
-    proposals: function(){ return q("trade_proposals", {order:{col:"updated_at",asc:false}, limit:200}); },
+    proposals: loadProposalQueue,
     books:     function(){ return q("v_paper_books", {order:{col:"sort_order",asc:true}}); },
     capital:   function(){ return q("v_deployable_capital"); },
     cashflow:  function(){ return q("v_monthly_cashflow"); },
@@ -947,6 +958,8 @@ async function loadAll(){
   var out  = await Promise.all(keys.map(function(k){ return sources[k](); }));
   keys.forEach(function(k,i){ D[k] = out[i] || []; });
 
+  D.proposalQueueStatus=D.proposals;
+  D.proposals=(D.proposalQueueStatus.rows||[]).sort(function(a,b){return String(b.updated_at).localeCompare(String(a.updated_at));});
   D.allAccounts = D.accounts;
   D.accounts = D.allAccounts.filter(function(a){ return !a.is_hidden; });
   D.entities = D.wall.map(function(e){ return e; });
@@ -2601,7 +2614,7 @@ function renderProposals(book){
   var stateFilter=$("proposal-state")?.value||"";
   rows=rows.filter(function(p){return (!stateFilter||p.state===stateFilter)&&(!search||(p.symbol+" "+p.thesis).toLowerCase().indexOf(search)>=0);});
   if(!rows.length){
-    box.innerHTML='<div class="empty">No proposals match this book and filter.</div>';
+    box.innerHTML='<div class="empty">'+esc(D.proposalQueueStatus?.complete===false?D.proposalQueueStatus.reason:'No proposals match this book and filter.')+'</div>';
     return;
   }
   function stateColor(state){
@@ -2731,7 +2744,7 @@ function wireRowActions(root, rows){
   Array.prototype.forEach.call(root.querySelectorAll("[data-close]"), function(b){
     b.onclick=function(){
       var t=find(b.getAttribute("data-close")); if(!t) return;
-      if((D.proposals||[]).some(function(p){return p.trade_id===t.id;})){alert("Linked Morrow exits use the paper bridge so the trade, proposal and receipt close together.");return;}
+      if((D.books||[]).some(function(bk){return bk.book_id===t.book_id&&isMorrowBook(bk);})||(D.proposals||[]).some(function(p){return p.trade_id===t.id;})){alert("Morrow exits use the paper bridge so the trade, proposal and receipt close together.");return;}
       var f=tradeFormSlot(root); if(!f) return;
       closeTradeForm();
       f.innerHTML='<div class="inline-form">'
@@ -2846,10 +2859,10 @@ function renderMorrowWorkbench(book){
   function feedStatus(dataset){var h=health.find(function(x){return x.dataset===dataset;});if(!h)return 'Awaiting activation';var age=Date.now()-Date.parse(h.checked_at);return (age>600000||age<0||!isFinite(age)?'Stale receipt · ':h.status+' · ')+h.coverage+' · '+h.checked_at;}
   var scope=research.available?'Latest '+rows.length+' server records'+(research.truncated?' · older history not loaded':''):'Server research projection unavailable';
   $("morrow-operations").innerHTML=active?'<div class="morrow-panels">'
-    +panel('Data health',[['Alpaca SIP',feedStatus('alpaca_sip')],['Tiingo',feedStatus('tiingo_eod')],['SEC',feedStatus('sec_submissions')],['Research sync',scope]],'Keys and entitlement canaries are required before paid data can qualify an idea. Current board prices do not certify consolidated SIP coverage.')
+    +panel('Data health',[['Alpaca SIP',feedStatus('alpaca_sip')],['Tiingo history',feedStatus('tiingo_eod')],['Tiingo news',feedStatus('tiingo_news')],['SEC filings',feedStatus('sec_submissions')],['SEC facts',feedStatus('sec_facts')],['BLS',feedStatus('bls_series')],['Dated macro',feedStatus('fred_vintage')],['Primary sources',feedStatus('primary_document')],['Research sync',scope],['Queue',D.proposalQueueStatus?.complete===false?D.proposalQueueStatus.reason:'Loaded']],'Keys and entitlement canaries are required before paid data can qualify an idea. Current board prices do not certify consolidated SIP coverage.')
     +panel('Operations · '+(latest?'recorded run':'awaiting first run'),[['Last job',last.job_id],['Recorded finish',last.finished_at],['Reported model',last.actual_model],['Reported status',last.status],['Route verification','Runtime attestation pending']], 'Run claims are persisted, but a configured or self-reported model is not independent execution proof. Six reasoning jobs and the existing guard remain the intended schedule.')
     +panel('Experiment lab · exploratory',[['Recorded strategy proposals',strategies.length],['Recorded outcomes',outcomes.length],['Champion','Not activated'],['Evaluation clock','Not started']],scope+'. Strategy records cannot promote themselves. Watch and rejected outcomes stay separate from executed paper results.')
-    +panel('ROI · '+(evaluation?'unverified reported accounting':'awaiting matched outcomes'),[['Gross P&L',dollars(roi.gross_pnl)],['Transaction costs',dollars(roi.transaction_costs)],['Fixed costs',dollars(roi.fixed_costs)],['Net result',dollars(roi.net_active_result)],['Matched benchmark excess',dollars(roi.benchmark_excess)],['Best outcome removed',dollars(roi.best_opportunity_removed)]],evaluation?'Period '+evaluation.payload.period_start+' to '+evaluation.payload.period_end+'. '+(roi.uncertainty||'Accounting requires source verification.'):'Unknown costs and unmatched outcomes remain unavailable. This is not the overall account return.')
+    +panel('ROI · '+(evaluation?'unverified reported accounting':'awaiting matched outcomes'),[['Gross P&L',dollars(roi.gross_pnl)],['Transaction costs',dollars(roi.transaction_costs)],['Fixed costs',dollars(roi.fixed_costs)],['Net result',dollars(roi.net_active_result)],['Matched benchmark excess',dollars(roi.benchmark_excess)],['Best outcome removed',dollars(roi.best_opportunity_removed)],['Drawdown',roi.drawdown==null?'Unavailable':(100*roi.drawdown).toFixed(2)+'%'],['Regime / sector','Awaiting verified classified outcomes']],evaluation?'Period '+evaluation.payload.period_start+' to '+evaluation.payload.period_end+'. '+(roi.uncertainty||'Accounting requires source verification.'):'Unknown costs and unmatched outcomes remain unavailable. This is not the overall account return.')
     +'</div>':"";
 
 }

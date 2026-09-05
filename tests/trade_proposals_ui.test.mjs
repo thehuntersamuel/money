@@ -30,8 +30,6 @@ function extractFunction(name) {
 }
 
 assert.match(html, /id="morrow-proposals"/, 'Trade needs a visible Morrow proposal section');
-assert.match(html, /proposals:\s*function\(\)\{\s*return q\("trade_proposals"/, 'proposal rows must load from Supabase');
-assert.match(html, /q\("trade_proposals",\s*\{order:\{col:"updated_at",asc:false\},\s*limit:200\}\)/, 'proposal history must use a bounded newest-first read');
 assert.match(html, /function renderProposals\(/, 'proposal rows need their own renderer');
 assert.match(html, /Current source review/, 'proposal cards must show research freshness');
 assert.match(html, /Strongest bear/, 'proposal cards must show the strongest bear case');
@@ -49,3 +47,4 @@ assert.equal(context.safeProposalUrl('https://user:pass@investor.example.com/pri
 assert.equal(context.safeProposalUrl('not a URL'), null);
 
 console.log('trade proposal UI contract and URL safety passed');
+assert.match(html,/proposals: loadProposalQueue/, 'queue uses paginated reads');

@@ -34,7 +34,7 @@ def fixture(n):
  return tid
 
 def close(tid,price=102):
- return f"select row_to_json(r)::text from close_morrow_paper_trade('{BOOK}','{tid}',{price},'TEST close') r"
+ return f"set role service_role; select row_to_json(r)::text from close_morrow_paper_trade('{BOOK}','{tid}',{price},'TEST close') r"
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
  tid=fixture(1)
@@ -79,5 +79,26 @@ assert 'permission denied' in sql('set role anon; select * from morrow_close_rec
 assert 'permission denied' in sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; truncate trades",False)
 assert 'openings blocked' in sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; insert into trades(book_id,symbol,qty,entry_price) values('{BOOK}','SPY',1,100)",False)
 assert 'permission denied' in sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; select * from morrow_market_observations",False)
+assert 'permission denied' in sql('set role authenticated; truncate app_owner',False)
+sql(f"""set role service_role;
+insert into trade_proposals select (jsonb_populate_record(null::trade_proposals,to_jsonb(p)||jsonb_build_object('id',gen_random_uuid(),'proposal_key','TEST:watch','state','watch','decision','wait_for_trigger','trade_id',null,'trigger_direction','above','trigger_price',101))).* from trade_proposals p limit 1;
+insert into morrow_market_observations(source_id,symbol,provider,feed,event_at,session,last,gap,is_test) values('TEST:native-crossing','SPY','alpaca','sip',clock_timestamp(),'regular',102,false,false);
+select append_morrow_research('{BOOK}','audit','TEST:native-audit','{{"note":"TEST isolated rehearsal"}}'::jsonb);
+insert into morrow_integration_health(dataset,status,detail,coverage) values('alpaca_sip','blocked','TEST fixture','unknown');
+""")
+for table in ['morrow_current_trigger_events','morrow_research_records','morrow_integration_health']:
+ assert sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; select count(*) from {table}").splitlines()[-1]=='1'
+ assert sql(f"set role authenticated; set request.jwt.claim.sub='{OTHER}'; select count(*) from {table}").splitlines()[-1]=='0'
+ assert 'permission denied' in sql(f'set role anon; select * from {table}',False)
+print('PASS service-role observation/crossing/history/research/health writes and owner-only projections')
 print('PASS captured owner RLS/grants: owner receipts, nonowner/anon denial, no raw observations or TRUNCATE')
 print('Native scoped live-schema rehearsal passed; external auth/account services remain synthetic.')
+
+ledger_tables=['trades','trade_proposals','morrow_close_receipts','morrow_trigger_events','morrow_proposal_history','morrow_market_observations','morrow_research_records']
+before={table:sql(f'select count(*) from {table}') for table in ledger_tables}
+for path in sorted((ROOT/'supabase/rollbacks').glob('*.sql'),reverse=True):
+ if path.name!='20260830000000_morrow_trade_proposals.rollback.sql':sql(path.read_text())
+assert before=={table:sql(f'select count(*) from {table}') for table in ledger_tables}
+assert sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; select count(*) from morrow_research_records").splitlines()[-1]=='1'
+assert 'permission denied' in sql(f"set role service_role; select append_morrow_research('{BOOK}','audit','TEST:after-rollback','{{}}'::jsonb)",False)
+print('PASS capability rollback preserves all ledger counts and owner reads, revokes new research writes')
