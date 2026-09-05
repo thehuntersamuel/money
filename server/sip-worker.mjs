@@ -2,9 +2,11 @@
 import {connectSip,supabaseObservationStore} from './ingestion.mjs';
 import {makeCalendar} from './calendar.mjs';
 import {universe} from './market-data.mjs';
-export async function supervise({connect,signal,sleep=ms=>new Promise(r=>setTimeout(r,ms)),maxAttempts=5,onFailure=()=>{},onHeartbeat=async()=>{}}){
+import {createAttemptBudget,parkUntilStopped} from './attempt-budget.mjs';
+export async function supervise({connect,signal,sleep=ms=>new Promise(r=>setTimeout(r,ms)),maxAttempts=5,beforeAttempt=async()=>{},onFailure=()=>{},onHeartbeat=async()=>{}}){
  if(!Number.isInteger(maxAttempts)||maxAttempts<1||maxAttempts>5)throw Error('reconnect budget must be 1-5');
  for(let attempt=0;attempt<maxAttempts&&!signal.aborted;attempt++){
+  await beforeAttempt(); // Reserve durably before any provider call or socket.
   let worker;
   try{
    worker=await connect();
@@ -22,9 +24,10 @@ export async function supervise({connect,signal,sleep=ms=>new Promise(r=>setTime
  throw Error('SIP reconnect budget exhausted; operator review required');
 }
 async function main(){
- if(process.env.MORROW_INGEST_ENABLED!=='true'){console.log(JSON.stringify({status:'disabled',new_openings_allowed:false}));return;}
+ if(process.env.MORROW_INGEST_ENABLED!=='true'){console.log(JSON.stringify({status:'disabled',new_openings_allowed:false}));if(process.env.MORROW_PARK_ON_FAILURE==='true')await parkUntilStopped();return;}
  const env=process.env;
  if(env.ALPACA_LICENSE_APPROVED!=='true'||env.ALPACA_ARCHIVE_APPROVED!=='true'||!env.ALPACA_API_KEY_ID||!env.ALPACA_API_SECRET_KEY||!env.SUPABASE_SERVICE_ROLE_KEY)throw Error('server licensing or credential configuration missing');
+ const budget=createAttemptBudget({directory:env.MORROW_STATE_DIR,runId:env.MORROW_STREAM_RUN_ID});
  const symbols=universe((env.MORROW_SYMBOLS||'SPY').split(',').map(s=>s.trim()));
  const url='https://fglbxoafbebsryjeqcbu.supabase.co';
  const store=supabaseObservationStore({url,serviceRole:env.SUPABASE_SERVICE_ROLE_KEY});
@@ -35,6 +38,7 @@ async function main(){
   const r=await fetch(`${url}/rest/v1/morrow_integration_health`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,'content-type':'application/json',prefer:'return=minimal'},body:JSON.stringify({dataset:'alpaca_sip',checked_at:new Date().toISOString(),status,detail:JSON.stringify({status:value.status,event_at:value.last_event_at||null,persisted_at:value.last_persisted_at||null,session:value.session||'unknown'}).slice(0,200),coverage:value.stale_symbols?.length?('stale_symbols:'+value.stale_symbols.join(',')).slice(0,200):value.backfill_complete===true?'bounded_replay_complete_earlier_unknown':'gap_or_unknown'})});
   if(!r.ok)throw Error('health persistence failed');
  };
- await supervise({signal:abort.signal,onHeartbeat:health=>onHealth(health||{status:'coverage_unknown_or_stale'}),connect:()=>connectSip({symbols,keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY,licensed:true,store,calendar,onHealth})});
+ try{await supervise({beforeAttempt:()=>budget.reserve(),signal:abort.signal,onHeartbeat:health=>onHealth(health||{status:'coverage_unknown_or_stale'}),connect:()=>connectSip({symbols,keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY,licensed:true,store,calendar,onHealth})});}
+ catch(error){await onHealth({status:'stream_stopped_operator_review_required'}).catch(()=>{});throw error;}
 }
-if(import.meta.url===new URL(process.argv[1]||'', 'file://').href)main().catch(()=>{console.error('Morrow SIP worker stopped; inspect readiness and server configuration.');process.exitCode=1;});
+if(import.meta.url===new URL(process.argv[1]||'', 'file://').href)main().catch(async()=>{console.error('Morrow SIP worker stopped; inspect readiness and server configuration.');if(process.env.MORROW_PARK_ON_FAILURE==='true')await parkUntilStopped();else process.exitCode=1;});
