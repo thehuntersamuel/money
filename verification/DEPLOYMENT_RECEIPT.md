@@ -64,3 +64,7 @@ Pre-existing unrelated warnings remain: mutable function search paths, pg_net in
 ## Rollback
 
 Disable ingestion first. Use reviewed capability rollback scripts; retain all receipts, research, observations and histories. Preserve safe exits whenever paper exposure exists. Restore reviewed prior function/config only after checking this exit constraint. Recheck record counts and authorization. Mac rollback is manifest/per-job based, never a wholesale cron-store replacement. Rollback was rehearsed in isolated PostgreSQL; no production rollback was needed.
+
+## Historical close follow-up
+
+Post-release UI inspection identified one pre-existing closed paper trade whose linked proposal remained `opened`, with no canonical execution receipt. `supabase/repairs/reconcile_legacy_closes.sql` uses the existing append-only audit/history ledgers to reconcile only matching, fully recorded Savings legacy closes. It changes no trade values, writes no execution receipt, preserves the original/reconciled proposal snapshots, computes the audit hash on the server and rejects incomplete or mismatched evidence. Repeating the repair is a no-op; audit failure rolls back the proposal update. This is a DML repair, not a new schema migration. The UI separates realized P&L, historical planned risk and exit values and identifies missing canonical execution evidence. Deployment/readback of this follow-up is recorded in the final release receipt.
