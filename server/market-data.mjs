@@ -60,7 +60,7 @@ export function makeMarketData({keyId,secret,licensed=false,fetchImpl=fetch,slee
 export function normalizeTiingoEod(symbol,row,retrievedAt) {
   universe([symbol]);time(retrievedAt);time(row.date);
   return {symbol,provider:'tiingo',observed_at:row.date,retrieved_at:retrievedAt,
-    raw_close:positive(row.close),adjusted_close:positive(row.adjClose),
+    raw_open:positive(row.open),raw_high:positive(row.high),raw_low:positive(row.low),raw_close:positive(row.close),adjusted_open:positive(row.adjOpen),adjusted_high:positive(row.adjHigh),adjusted_low:positive(row.adjLow),adjusted_close:positive(row.adjClose),volume:typeof row.volume==='number'&&Number.isFinite(row.volume)&&row.volume>=0?row.volume:null,adjusted_volume:typeof row.adjVolume==='number'&&Number.isFinite(row.adjVolume)&&row.adjVolume>=0?row.adjVolume:null,
     dividend:typeof row.divCash==='number'&&Number.isFinite(row.divCash)?row.divCash:null,
     split_factor:positive(row.splitFactor),adjustment_version:retrievedAt,
     use:'independent EOD research; not consolidated crossing or fill authority'};

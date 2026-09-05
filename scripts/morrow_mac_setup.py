@@ -40,7 +40,7 @@ def plan(hermes,project):
  for name in SCRIPTS:
   source=REPO/'scripts'/name;target=safe(hermes/'scripts'/name)
   items.append({'source':str(source),'target':str(target),'sha256':sha(source),'before_sha256':sha(target) if target.exists() else None})
- for name in ('OPERATING_CONTRACT.md','scheduler-baseline.json','MORROW_MAC_HANDOFF.md','JOB_AMENDMENTS.md'):
+ for name in ('OPERATING_CONTRACT.md','scheduler-baseline.json','MORROW_MAC_HANDOFF.md','JOB_AMENDMENTS.md','FULL_MARKET_RESEARCH.md'):
   source=REPO/'mac'/name;target=safe(project/'capital/morrow/setup'/name)
   items.append({'source':str(source),'target':str(target),'sha256':sha(source),'before_sha256':sha(target) if target.exists() else None})
  return items
@@ -83,7 +83,7 @@ def rollback(manifest_path):
  m=json.loads(manifest_path.read_text())
  if m.get('state')!='installed': raise ValueError('only an installed manifest can be rolled back')
  hermes=safe(m['hermes']);project=safe(m['project'])
- allowed={str(hermes/'scripts'/name) for name in SCRIPTS}|{str(project/'capital/morrow/setup'/name) for name in ('OPERATING_CONTRACT.md','scheduler-baseline.json','MORROW_MAC_HANDOFF.md','JOB_AMENDMENTS.md')}
+ allowed={str(hermes/'scripts'/name) for name in SCRIPTS}|{str(project/'capital/morrow/setup'/name) for name in ('OPERATING_CONTRACT.md','scheduler-baseline.json','MORROW_MAC_HANDOFF.md','JOB_AMENDMENTS.md','FULL_MARKET_RESEARCH.md')}
  if len(m['entries'])!=len(allowed) or {i['target'] for i in m['entries']}!=allowed: raise ValueError('invalid manifest targets')
  for item in m['entries']:
   target=safe(item['target'])

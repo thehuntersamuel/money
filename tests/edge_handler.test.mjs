@@ -1,3 +1,6 @@
+import {makeDiscovery} from '../server/discovery.mjs';
+import {fetchSource} from '../server/source-pipelines.mjs';
+import {ensureResearchWatchlist} from '../supabase/functions/morrow-bridge/watchlist.mjs';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
@@ -10,6 +13,7 @@ const keyHash=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder()
 const raw=readFileSync(new URL('../supabase/functions/morrow-bridge/index.ts',import.meta.url),'utf8')
  .replace(/import \{ createClient \}[^;]+;/,'').replace(/import \{[\s\S]*?\} from '\.\/contract.mjs';/,'')
  .replace(/import \{ validateResearch, researchSummary \} from '\.\/research.mjs';/,'')
+ .replace(/import \{ (makeDiscovery|fetchSource|ensureResearchWatchlist) \}[^;]+;/g,'')
  .replace(/const EXPECTED_KEY_SHA256 = '[a-f0-9]+';/,`const EXPECTED_KEY_SHA256 = '${keyHash}';`);
 function harness({rows={},approved=false}={}){
  let handler;let clients=0;let mutations=0;const tables=[];
@@ -20,10 +24,10 @@ function harness({rows={},approved=false}={}){
    const data=table==='v_paper_books'?[book]:(rows[table]||[]);
    return {data:one?(data[0]||null):data,error:null};
   };
-  const q={then(resolve){return Promise.resolve(result()).then(resolve)},update(value){patch=value;return q},single(){one=true;return q},maybeSingle(){one=true;return q}};
+  const q={upsert(value){rows[table]=rows[table]||[];if(!rows[table].some(r=>r.symbol===value.symbol))rows[table].push(value);mutations++;return q},then(resolve){return Promise.resolve(result()).then(resolve)},update(value){patch=value;return q},single(){one=true;return q},maybeSingle(){one=true;return q}};
   for(const method of ['select','eq','limit','order','in'])q[method]=()=>q;return q;
  },rpc(){mutations++;throw new Error('unexpected mutation')}};
- const context={...contract,...research,Response,Request,URL,TextEncoder,crypto,Date,Intl,createClient(){clients++;return db;},Deno:{env:{get:name=>approved&&/_(LICENSE|DISPLAY|ARCHIVE|NEWS)_APPROVED$/.test(name)?'true':'TEST-only'},serve(fn){handler=fn;}}};
+ const context={makeDiscovery,fetchSource,ensureResearchWatchlist,...contract,...research,Response,Request,URL,TextEncoder,crypto,Date,Intl,createClient(){clients++;return db;},Deno:{env:{get:name=>approved&&/_(LICENSE|DISPLAY|ARCHIVE|NEWS)_APPROVED$/.test(name)?'true':'TEST-only'},serve(fn){handler=fn;}}};
  vm.runInNewContext(stripTypeScriptTypes(raw),context);
  return {call:(operation,{authenticated=true,method='POST',payload={}}={})=>handler(new Request('https://example.test',{method,headers:authenticated?{authorization:`Bearer ${key}`}:{},...(method==='POST'?{body:JSON.stringify({operation,...payload})}:{})})),tables:()=>tables,counts:()=>({clients,mutations})};
 }
