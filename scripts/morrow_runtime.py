@@ -13,13 +13,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path.home() / 'Projects/Hunter/maddox-command/capital/morrow'
-KINDS = {'source', 'decision', 'strategy', 'outcome', 'run', 'audit'}
+KINDS = {'source', 'decision', 'strategy', 'outcome', 'run', 'audit', 'evaluation'}
 FIELDS = {
  'source': {'url','title','source_type','released_at','retrieved_at','accession','vintage','content_sha256','retention_note'},
  'decision': {'proposal_key','symbol','disposition','horizon','thesis','bear_case','catalyst','review_at','strategy_id','source_ids','event_ids','assumptions','missing_data','benchmark','sync_receipt_id'},
  'strategy': {'name','hypothesis','universe','horizon','entry_rules','exit_rules','cost_assumptions','baseline','holdout','variants_tried','promotion_criteria'},
  'outcome': {'decision_id','cohort','matured_at','gross_return','benchmark_return','cash_return','transaction_cost','fixed_cost','missing_reason','receipt_ids'},
  'run': {'job_id','started_at','finished_at','status','actual_provider','actual_model','actual_reasoning_effort','runtime_evidence_id','input_ids','output_ids','blockers'},
+ 'evaluation': {'opportunities','fixed_costs','period_start','period_end'},
  'audit': {'subject','status','evidence_ids','blockers','note'},
 }
 
@@ -74,6 +75,10 @@ def validate(kind, data):
   require('job_id','started_at','finished_at','status')
   if data['status'] not in {'ok','blocked','failed','no_change'}: raise ValueError('invalid run status')
   if timestamp(data['finished_at'])<timestamp(data['started_at']): raise ValueError('run finishes before it starts')
+ if kind=='evaluation':
+  require('opportunities','period_start','period_end')
+  if not isinstance(data['opportunities'],list) or len(data['opportunities'])>100: raise ValueError('bounded evaluation opportunities required')
+  timestamp(data['period_start']); timestamp(data['period_end'])
  if kind=='audit': require('subject','status')
  return data
 
@@ -88,6 +93,9 @@ def connect(root):
  db.execute('PRAGMA foreign_keys=ON')
  db.executescript('''
  CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,kind TEXT NOT NULL,idempotency_key TEXT UNIQUE NOT NULL,created_at TEXT NOT NULL,payload TEXT NOT NULL,sha256 TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS sync_receipts(local_id TEXT PRIMARY KEY REFERENCES records(id),remote_id TEXT NOT NULL,server_sha256 TEXT NOT NULL,synced_at TEXT NOT NULL);
+ CREATE TRIGGER IF NOT EXISTS immutable_sync_update BEFORE UPDATE ON sync_receipts BEGIN SELECT RAISE(ABORT,'append-only sync receipts'); END;
+ CREATE TRIGGER IF NOT EXISTS immutable_sync_delete BEFORE DELETE ON sync_receipts BEGIN SELECT RAISE(ABORT,'append-only sync receipts'); END;
  CREATE TRIGGER IF NOT EXISTS immutable_update BEFORE UPDATE ON records BEGIN SELECT RAISE(ABORT,'append-only ledger'); END;
  CREATE TRIGGER IF NOT EXISTS immutable_delete BEFORE DELETE ON records BEGIN SELECT RAISE(ABORT,'append-only ledger'); END;
  ''')
@@ -136,19 +144,52 @@ def export(root):
    yield dict(zip(('id','kind','idempotency_key','created_at','payload','local_sha256'),(*row[:4],json.loads(row[4]),row[5])))
  finally: db.close()
 
+
+def sync(root, call=None):
+ if call is None:
+  from morrow_finance_bridge import call_bridge
+  call=call_bridge
+ # Verify the deployed operation before any attempted write. Old bridge fails here.
+ state=call('research_state')
+ if state.get('operation')!='research_state' or state.get('ok') is not True:
+  raise ValueError('deployed research projection not verified')
+ db=connect(root)
+ try:
+  mapping=dict(db.execute('SELECT local_id,remote_id FROM sync_receipts'))
+  synced=0
+  for record in export(root):
+   if record['id'] in mapping: continue
+   payload=dict(record['payload'])
+   for key in ('source_ids','input_ids','output_ids'):
+    if key in payload: payload[key]=[mapping.get(v,v) for v in payload[key]]
+   for key in ('strategy_id','decision_id'):
+    if payload.get(key): payload[key]=mapping.get(payload[key],payload[key])
+   result=call('record_research',{'record':{'kind':record['kind'],'idempotency_key':'mac:'+record['id'],'payload':payload}})
+   receipt=result.get('receipt') or {}
+   if receipt.get('verified') is not True or not re.fullmatch('[a-f0-9-]{36}',str(receipt.get('id',''))) or not re.fullmatch('[a-f0-9]{64}',str(receipt.get('server_sha256',''))):
+    raise ValueError('server research readback missing')
+   with db:
+    db.execute('INSERT OR IGNORE INTO sync_receipts VALUES(?,?,?,?)',(record['id'],receipt['id'],receipt['server_sha256'],now()))
+    stored=db.execute('SELECT remote_id,server_sha256 FROM sync_receipts WHERE local_id=?',(record['id'],)).fetchone()
+    if stored!=(receipt['id'],receipt['server_sha256']): raise ValueError('sync receipt conflict')
+   mapping[record['id']]=receipt['id'];synced+=1
+  return {'synced':synced,'new_openings_allowed':False,'provider_credentials_read':False}
+ finally: db.close()
+
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--root',type=Path,default=ROOT)
  sub=p.add_subparsers(dest='command',required=True)
- sub.add_parser('status');sub.add_parser('export')
+ sub.add_parser('status');sub.add_parser('export');sub.add_parser('sync')
  record=sub.add_parser('record');record.add_argument('kind',choices=sorted(KINDS));record.add_argument('--key',required=True);record.add_argument('--payload',type=Path,required=True)
  a=p.parse_args()
  try:
   if a.command=='status': print(canonical(snapshot(a.root)))
+  elif a.command=='sync': print(canonical(sync(a.root)))
   elif a.command=='export':
    for row in export(a.root): print(canonical(row))
   else: print(canonical(append(a.root,a.kind,a.key,json.loads(a.payload.read_text()))))
   return 0
- except (ValueError,TypeError,KeyError,OSError,sqlite3.Error):
+ except (RuntimeError,ValueError,TypeError,KeyError,OSError,sqlite3.Error):
   print(canonical({'ok':False,'error':'local_record_failed_validation_or_storage','details':'inspect locally; payload omitted'}));return 1
 
 if __name__=='__main__': raise SystemExit(main())

@@ -910,6 +910,9 @@ async function loadAll(){
     session:   function(){ return q("market_session"); },
     watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
     trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
+    research: function(){ return sb.from("morrow_research_records")
+      .select("id,book_id,kind,created_at,payload,server_sha256").order("created_at",{ascending:false}).limit(101)
+      .then(function(r){return {available:!r.error,rows:(r.data||[]).slice(0,100),truncated:(r.data||[]).length>100};}); },
     proposals: function(){ return q("trade_proposals", {order:{col:"updated_at",asc:false}, limit:200}); },
     books:     function(){ return q("v_paper_books", {order:{col:"sort_order",asc:true}}); },
     capital:   function(){ return q("v_deployable_capital"); },
@@ -2831,11 +2834,21 @@ function renderMorrowWorkbench(book){
   $("tk-place").disabled=active;
   $("tk-place").textContent=active?"Entries paused":"Place";
   $("ticket-policy").textContent=active?'Planned risk: 0.5% per position, 1% aggregate; maximum 3 open positions and 1 new opening per New York trading day. Both stated and implied reward:risk must be at least 1.5:1. Stops do not guarantee the loss limit during gaps. New entries are currently blocked.':'Planned loss is capped at 2% of this book. Both stated and implied reward:risk must be at least 1.5:1. Simulation only.';
+  var research=D.research||{available:false,rows:[]};
+  var rows=(research.rows||[]).filter(function(r){return r.book_id===book.book_id;});
+  var runs=rows.filter(function(r){return r.kind==="run";}), strategies=rows.filter(function(r){return r.kind==="strategy";});
+  var outcomes=rows.filter(function(r){return r.kind==="outcome";}), evaluations=rows.filter(function(r){return r.kind==="evaluation";});
+  var latest=runs[0], last=latest?latest.payload:{}, evaluation=evaluations[0], roi=evaluation?evaluation.payload.result||{}:{};
+  function panel(title,items,note){return '<details class="morrow-panel"><summary>'+esc(title)+'</summary><dl>'+items.map(function(pair){return '<dt>'+esc(pair[0])+'</dt><dd>'+esc(pair[1]==null?'Unknown':String(pair[1]))+'</dd>';}).join('')+'</dl><p>'+esc(note)+'</p></details>';}
+  function dollars(value){return typeof value==='number'&&isFinite(value)?fmt2(value):'Unavailable';}
+  var scope=research.available?'Latest '+rows.length+' server records'+(research.truncated?' · older history not loaded':''):'Server research projection unavailable';
   $("morrow-operations").innerHTML=active?'<div class="morrow-panels">'
-    +'<details class="morrow-panel"><summary>Data health · unverified</summary><dl><dt>Consolidated SIP</dt><dd>Not verified</dd><dt>Event freshness</dt><dd>Unknown</dd><dt>Missed intervals</dt><dd>Coverage unverified</dd><dt>Tiingo</dt><dd>Optional · not connected</dd></dl><p>Existing board quotes are not proof of SIP entitlement. Provider observations stay hidden until display rights are verified.</p></details>'
-    +'<details class="morrow-panel"><summary>Operations · live readback pending</summary><dl><dt>Reasoning route</dt><dd>GPT-5.6 / high intended</dd><dt>Actual last model</dt><dd>Unknown</dd><dt>Last / next run</dt><dd>Live telemetry unavailable</dd></dl><p>Six existing reasoning jobs and one deterministic guard are documented. The hosted GPT-5.4 fallback is unchanged. No competing scheduler has been added.</p></details>'
-    +'<details class="morrow-panel"><summary>Experiment lab · exploratory</summary><dl><dt>Champion version</dt><dd>Freeze not verified</dd><dt>Evaluation clock</dt><dd>Not started</dd><dt>Promotion</dt><dd>Owner approval required</dd></dl><p>Watch and rejected ideas remain separate from executed paper results. A challenger cannot promote itself or rewrite an active rulebook.</p></details>'
-    +'<details class="morrow-panel"><summary>ROI · evaluation incomplete</summary><dl><dt>Exposure-matched baseline</dt><dd>Unavailable</dd><dt>Fixed data costs</dt><dd>Purchase receipts required</dd><dt>Net active result</dt><dd>Not established</dd><dt>Uncertainty / sample maturity</dt><dd>Not established</dd></dl><p>Book P&amp;L above is the ledger result. It does not establish performance after subscriptions, spreads, slippage or passive alternatives.</p></details></div>':"";
+    +panel('Data health · not yet entitled',[['Alpaca SIP','Awaiting activation'],['Tiingo','Awaiting activation'],['Coverage','Unknown'],['Research sync',scope]],'Keys and entitlement canaries are required before paid data can qualify an idea. Current board prices do not certify consolidated SIP coverage.')
+    +panel('Operations · '+(latest?'recorded run':'awaiting first run'),[['Last job',last.job_id],['Recorded finish',last.finished_at],['Reported model',last.actual_model],['Reported status',last.status],['Route verification','Runtime attestation pending']], 'Run claims are persisted, but a configured or self-reported model is not independent execution proof. Six reasoning jobs and the existing guard remain the intended schedule.')
+    +panel('Experiment lab · exploratory',[['Recorded strategy proposals',strategies.length],['Recorded outcomes',outcomes.length],['Champion','Not activated'],['Evaluation clock','Not started']],scope+'. Strategy records cannot promote themselves. Watch and rejected outcomes stay separate from executed paper results.')
+    +panel('ROI · '+(evaluation?'recorded evaluation':'awaiting matched outcomes'),[['Gross P&L',dollars(roi.gross_pnl)],['Transaction costs',dollars(roi.transaction_costs)],['Fixed costs',dollars(roi.fixed_costs)],['Net result',dollars(roi.net_active_result)],['Matched benchmark excess',dollars(roi.benchmark_excess)],['Best outcome removed',dollars(roi.best_opportunity_removed)]],evaluation?'Period '+evaluation.payload.period_start+' to '+evaluation.payload.period_end+'. '+(roi.uncertainty||'Accounting requires source verification.'):'Unknown costs and unmatched outcomes remain unavailable. This is not the overall account return.')
+    +'</div>':"";
+
 }
 
 function renderTrade(){

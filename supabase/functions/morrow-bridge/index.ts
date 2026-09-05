@@ -9,6 +9,8 @@ import {
   validateProposal,
 } from './contract.mjs';
 
+import { validateResearch, researchSummary } from './research.mjs';
+
 const EXPECTED_KEY_SHA256 = '3eb826f454f490f7c3e0a941d5f87c60c67b45bc2c16724d2717999cc4abca74';
 const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store' };
 
@@ -89,6 +91,29 @@ Deno.serve(async (request) => {
         quoteResult.data || [],
         new Date().toISOString(),
       );
+    }
+
+    if (operation === 'research_state') {
+      const limit = 100;
+      const before = body.before == null ? null : String(body.before);
+      if (before && (!/^[0-9a-f-]{36}$/.test(before))) return reply(400, {error:'invalid research cursor'});
+      let query = db.from('morrow_research_records').select('id,book_id,kind,idempotency_key,created_at,payload,server_sha256').eq('book_id',book.book_id).order('id',{ascending:false}).limit(limit+1);
+      if (before) query=query.lt('id',before);
+      const {data,error}=await query;
+      if(error) return reply(503,{error:'research projection unavailable'});
+      const rows=(data||[]).slice(0,limit);
+      const recent=[...rows].sort((a,b)=>b.created_at.localeCompare(a.created_at));
+      return reply(200,{ok:true,operation,records:rows,summary:researchSummary(recent,{truncated:(data||[]).length>limit||!!before}),next_cursor:(data||[]).length>limit?rows[rows.length-1].id:null,mutation_calls:0});
+    }
+    if (operation === 'record_research') {
+      const record=validateResearch(body.record);
+      const {data,error}=await db.rpc('append_morrow_research',{p_book_id:book.book_id,p_kind:record.kind,p_key:record.idempotency_key,p_payload:record.payload});
+      if(error) return reply(409,{error:'research record rejected; verify references and idempotency'});
+      const saved=Array.isArray(data)?data[0]:data;
+      if(!saved?.id) throw new Error('research write receipt missing');
+      const {data:verified,error:verifyError}=await db.from('morrow_research_records').select('id,book_id,kind,idempotency_key,server_sha256').eq('id',saved.id).eq('book_id',book.book_id).single();
+      if(verifyError||!verified||verified.server_sha256!==saved.server_sha256)throw new Error('research independent readback failed');
+      return reply(200,{ok:true,operation,receipt:{...verified,verified:true,at:now},mutation_calls:1});
     }
 
     if (operation === 'state') return reply(200, { ok: true, operation, state: await currentState(), mutation_calls: 0 });
