@@ -4,7 +4,7 @@ This is an implementation runbook for Maddox/the implementer. Hunter supplies pr
 
 ## Revision and gates
 
-Use the reviewed PR head from `fix/morrow-reliability`. Confirm the latest GitHub `Morrow verification` run is successful, including native PostgreSQL concurrent tests. Native CI uses a minimized synthetic schema; it does not replace rehearsal against exact production DDL, triggers, grants and RLS. Preserve a private exact live backup and obtain independent review before production migration. Do not mark these gates passed from a prompt, intended model pin or configuration flag.
+Use the reviewed PR head from `fix/morrow-reliability`. Confirm the latest GitHub `Morrow verification` run is successful, including native PostgreSQL concurrent tests. Native CI reconstructs the captured affected production schema, RLS and grants with synthetic records and external identity stubs; it exercises service-role concurrency and ledger-preserving rollback. A private scoped recovery snapshot was preserved and independent review completed before deployment. See verification/DEPLOYMENT_RECEIPT.md for live evidence and limits. Do not mark these gates passed from a prompt, intended model pin or configuration flag.
 
 ## Additive database deployment
 
@@ -13,6 +13,7 @@ Recheck the live migration history. Do not replay `20260830000000_morrow_trade_p
 1. `20260830020000_morrow_trade_close_lifecycle.sql`
 2. `20260905013412_morrow_durable_events_and_guards.sql`
 3. `20260905020102_morrow_research_runtime.sql`
+4. `20260905023729_morrow_source_pipelines.sql`
 
 The new tables retain immutable close receipts, observations, trigger events, proposal history, research records, provider snapshots and health receipts. Only owner-authenticated users can read research/health. Browser roles cannot read raw provider snapshots or write research; the existing custom-auth bridge performs narrow research operations. New Savings openings remain mechanically blocked. Run security advisors and unauthorized/owner access readbacks after staging/deployment.
 
@@ -62,9 +63,9 @@ The implementer performs entitlement/freshness/coverage canaries, unknown/stale/
 
 Disable ingestion first and revoke new research/provider insert capability with the corresponding rollback. Preserve all ledgers/history. Retain safe exit capability if paper exposure exists. Restore only the reviewed prior function/config and verify state/access. Mac rollback is per installer manifest and per-job supported edits, never an entire cron-store replacement.
 
-## What is still not implemented or certified
+## Remaining commissioning gates
 
-The SEC client covers submissions/company-fact availability, not a complete automatic issuer/BLS/BEA/FRED/ALFRED/FINRA/news pipeline. Tiingo EOD requests are implemented; Tiingo news and license-specific retention enforcement are not. Evaluation accounting is implemented, but verified baseline ingestion, portfolio marked equity histories, full regime/sector analysis and calibration need their real input contracts and data. These are not solved by entering provider keys. Do not present the whole original handoff as complete from this checkpoint.
+Provider entitlement/retention confirmation and real canaries, a persistent SIP server host, actual Mac installation and scheduler/runtime receipts, and verified evaluation inputs remain open. The structured BEA/FINRA integrations are not provisioned. Source adapters and explicit unavailable states are described below. Entering keys alone does not satisfy these gates.
 
 ## Source pipeline extension
 

@@ -10,7 +10,7 @@ Provider subscriptions and keys belong to the server integration. Store provider
 
 Alpaca / Tiingo → server ingestion → Supabase observations, events and bounded projections → authenticated `morrow-bridge` → Mac Morrow and owner-authenticated Money Hub.
 
-GitHub `main` is source, not the running database or an API credential store. Merge and Supabase deployment are separate unless a verified deployment workflow links them. The current draft PR has not deployed the backend. This branch adds `research_state`, `record_research` and `data_read`; the existing live bridge still lacks these undeployed operations. Do not invent operation names or treat HTTP 200 on an old bridge as integration readiness.
+GitHub `main` is source, not the running database or an API credential store. Merge and Supabase deployment are separate unless a verified deployment workflow links them. The reviewed backend is deployed as morrow-bridge v5 and morrow-data v1. The bridge now includes `research_state`, `record_research` and `data_read`; confirm exact deployment/readback evidence in `verification/DEPLOYMENT_RECEIPT.md`. Authenticated Mac commissioning is still pending. Do not invent operation names or treat HTTP 200 on an old bridge as integration readiness.
 
 A persistent SIP socket requires a supervised server worker; a short-lived Supabase Edge request is not an always-on stream host. The worker needs server-side access to credentials through its approved secret mechanism. Never distribute Supabase service-role access to research jobs. Where streaming runtime is not available, leave coverage unknown; do not call polling continuous coverage. Tiingo HTTP ingestion can use bounded server jobs after entitlement is approved.
 
