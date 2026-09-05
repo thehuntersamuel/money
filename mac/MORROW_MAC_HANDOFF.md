@@ -10,7 +10,7 @@ Provider subscriptions and keys belong to the server integration. Store provider
 
 Alpaca / Tiingo → server ingestion → Supabase observations, events and bounded projections → authenticated `morrow-bridge` → Mac Morrow and owner-authenticated Money Hub.
 
-GitHub `main` is source, not the running database or an API credential store. Merge and Supabase deployment are separate unless a verified deployment workflow links them. The current draft PR has not deployed the backend. The existing live bridge has no complete paid-data research API. Do not invent operation names or treat HTTP 200 on an old bridge as integration readiness.
+GitHub `main` is source, not the running database or an API credential store. Merge and Supabase deployment are separate unless a verified deployment workflow links them. The current draft PR has not deployed the backend. This branch adds `research_state`, `record_research` and `data_read`; the existing live bridge still lacks these undeployed operations. Do not invent operation names or treat HTTP 200 on an old bridge as integration readiness.
 
 A persistent SIP socket requires a supervised server worker; a short-lived Supabase Edge request is not an always-on stream host. The worker needs server-side access to credentials through its approved secret mechanism. Never distribute Supabase service-role access to research jobs. Where streaming runtime is not available, leave coverage unknown; do not call polling continuous coverage. Tiingo HTTP ingestion can use bounded server jobs after entitlement is approved.
 
@@ -55,7 +55,7 @@ python3 ~/.hermes/scripts/morrow_runtime.py export
 
 Export writes private JSONL to stdout; redirect only into the approved private project. Never commit exports to public money source. Template files in `mac/templates/` explain required fields. Use new keys for revisions: same key/same payload returns the existing record, different payload rejects. Source/strategy/decision references must exist locally. Keep pending fields as sidecars until the deployed bridge explicitly supports them. A submitted runtime model field is a claim awaiting comparison with trusted runtime evidence, not self-attestation.
 
-No automated performance claims are computed from unverified records. Missing returns/costs are null with reasons. Shadow/rejected outcomes stay separate from paper receipts. Champion remains absent until a separately reviewed activation implementation and owner decision exist.
+Server evaluation records compute descriptive dollar accounting from submitted matched opportunities and canonical close references; this does not independently certify the submitted baseline data or establish investment edge. Missing returns/costs are null with reasons. Shadow/rejected outcomes stay separate from paper receipts. Champion remains absent until a separately reviewed activation implementation and owner decision exist.
 
 ## Rollback
 
@@ -66,3 +66,18 @@ Run `python3 scripts/morrow_mac_setup.py rollback --manifest <printed-manifest>`
 Native PostgreSQL concurrency and independent review, private backups, additive migrations/RLS, server deployment and readback; approved persistent ingest runtime; data/source/experiment/ROI projections in the Hub; browser verification; provider entitlement canaries once Hunter provisions subscriptions; and actual Mac acceptance. Installing this package does not complete those gates.
 
 Hermes references checked: [cron management](https://hermes-agent.nousresearch.com/docs/user-guide/features/cron), [cron internals](https://hermes-agent.nousresearch.com/docs/developer-guide/cron-internals). Verify compatibility with the installed Mac version before any scheduler edit.
+
+## Server sync added after initial Mac setup
+
+After the additive research migration and updated bridge are deployed and read back, Maddox runs:
+
+```bash
+python3 ~/.hermes/scripts/morrow_runtime.py sync
+python3 ~/.hermes/scripts/morrow_finance_bridge.py research-state
+```
+
+Sync checks the deployed operation first, translates local source/decision/strategy references to server IDs, retries using stable idempotency keys, and stores immutable server receipts locally. Interrupted sync preserves the original record. Call sync at the end of the existing reasoning runs; do not create a new scheduler. The server authenticates through the existing bridge key. No provider keys are requested from Morrow.
+
+For permitted provider snapshots, use `data-read --payload <private-json-file>` with `{"dataset":"alpaca_sip","symbols":["SPY"]}`, `{"dataset":"tiingo_eod"}`, or `{"dataset":"sec_submissions"}`. A missing snapshot is unavailable; a returned snapshot must still pass timestamp, coverage and strategy-specific freshness checks. `alpaca_sip` includes at most 100 recent non-TEST observations; request bounded symbols rather than assuming every symbol appears in the page. Source metadata and evaluation inputs remain subject to independent verification.
+
+Native PostgreSQL CI now runs in GitHub Actions, including separate-session close retries/races. The exact live-schema rehearsal, independent review, production deployment and actual Mac installation remain separate acceptance gates. See `mac/DEPLOYMENT_ORDER.md` in the reviewed checkout.

@@ -21,7 +21,7 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
  await onHealth({status:recovered.coverage_complete?'bounded_replay_complete':'coverage_gap',start,end,earlier_coverage:'unknown'});
  let coverageComplete=recovered.coverage_complete;
  const socket=socketFactory(SIP_STREAM);
- function fail(reason){healthy=false;closed=true;socket.close();return onHealth({status:'failed',reason,at:now()});}
+ async function fail(reason){healthy=false;closed=true;socket.close();try{await onHealth({status:'failed',reason,at:now()});}catch{/* Already failed closed; no unhandled secret-bearing error. */}}
  socket.addEventListener('open',()=>socket.send(JSON.stringify({action:'auth',key:keyId,secret})));
  socket.addEventListener('message',event=>{
   if(closed)return;
@@ -58,7 +58,7 @@ export async function connectSip({symbols,keyId,secret,licensed=false,store,cale
    if(batch.length)await store(batch); // Failure closes socket; supervisor must replay before reconnecting.
   }).catch(()=>fail('stream_or_persistence_failure')).finally(()=>{pending--;});
  });
- socket.addEventListener('close',()=>{healthy=false;closed=true;void onHealth({status:'disconnected',at:now(),coverage:'gap_until_replay'});});
+ socket.addEventListener('close',()=>{healthy=false;closed=true;try{void Promise.resolve(onHealth({status:'disconnected',at:now(),coverage:'gap_until_replay'})).catch(()=>{});}catch{/* Remain disconnected. */}});
  socket.addEventListener('error',()=>{void fail('stream_connection_failure');});
  return {stop:()=>{closed=true;healthy=false;socket.close();},drain:()=>queue,isHealthy:()=>healthy};
 }

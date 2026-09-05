@@ -910,6 +910,7 @@ async function loadAll(){
     session:   function(){ return q("market_session"); },
     watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
     trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
+    integrationHealth: function(){return sb.from("morrow_integration_health").select("dataset,checked_at,status,detail,coverage").order("checked_at",{ascending:false}).limit(30).then(function(r){return {available:!r.error,rows:r.data||[]};});},
     research: function(){ return sb.from("morrow_research_records")
       .select("id,book_id,kind,created_at,payload,server_sha256").order("created_at",{ascending:false}).limit(101)
       .then(function(r){return {available:!r.error,rows:(r.data||[]).slice(0,100),truncated:(r.data||[]).length>100};}); },
@@ -2841,9 +2842,11 @@ function renderMorrowWorkbench(book){
   var latest=runs[0], last=latest?latest.payload:{}, evaluation=evaluations[0], roi=evaluation?evaluation.payload.result||{}:{};
   function panel(title,items,note){return '<details class="morrow-panel"><summary>'+esc(title)+'</summary><dl>'+items.map(function(pair){return '<dt>'+esc(pair[0])+'</dt><dd>'+esc(pair[1]==null?'Unknown':String(pair[1]))+'</dd>';}).join('')+'</dl><p>'+esc(note)+'</p></details>';}
   function dollars(value){return typeof value==='number'&&isFinite(value)?fmt2(value):'Unavailable';}
+  var health=(D.integrationHealth||{}).rows||[];
+  function feedStatus(dataset){var h=health.find(function(x){return x.dataset===dataset;});if(!h)return 'Awaiting activation';var age=Date.now()-Date.parse(h.checked_at);return (age>600000||age<0||!isFinite(age)?'Stale receipt · ':h.status+' · ')+h.coverage+' · '+h.checked_at;}
   var scope=research.available?'Latest '+rows.length+' server records'+(research.truncated?' · older history not loaded':''):'Server research projection unavailable';
   $("morrow-operations").innerHTML=active?'<div class="morrow-panels">'
-    +panel('Data health · not yet entitled',[['Alpaca SIP','Awaiting activation'],['Tiingo','Awaiting activation'],['Coverage','Unknown'],['Research sync',scope]],'Keys and entitlement canaries are required before paid data can qualify an idea. Current board prices do not certify consolidated SIP coverage.')
+    +panel('Data health',[['Alpaca SIP',feedStatus('alpaca_sip')],['Tiingo',feedStatus('tiingo_eod')],['SEC',feedStatus('sec_submissions')],['Research sync',scope]],'Keys and entitlement canaries are required before paid data can qualify an idea. Current board prices do not certify consolidated SIP coverage.')
     +panel('Operations · '+(latest?'recorded run':'awaiting first run'),[['Last job',last.job_id],['Recorded finish',last.finished_at],['Reported model',last.actual_model],['Reported status',last.status],['Route verification','Runtime attestation pending']], 'Run claims are persisted, but a configured or self-reported model is not independent execution proof. Six reasoning jobs and the existing guard remain the intended schedule.')
     +panel('Experiment lab · exploratory',[['Recorded strategy proposals',strategies.length],['Recorded outcomes',outcomes.length],['Champion','Not activated'],['Evaluation clock','Not started']],scope+'. Strategy records cannot promote themselves. Watch and rejected outcomes stay separate from executed paper results.')
     +panel('ROI · '+(evaluation?'recorded evaluation':'awaiting matched outcomes'),[['Gross P&L',dollars(roi.gross_pnl)],['Transaction costs',dollars(roi.transaction_costs)],['Fixed costs',dollars(roi.fixed_costs)],['Net result',dollars(roi.net_active_result)],['Matched benchmark excess',dollars(roi.benchmark_excess)],['Best outcome removed',dollars(roi.best_opportunity_removed)]],evaluation?'Period '+evaluation.payload.period_start+' to '+evaluation.payload.period_end+'. '+(roi.uncertainty||'Accounting requires source verification.'):'Unknown costs and unmatched outcomes remain unavailable. This is not the overall account return.')

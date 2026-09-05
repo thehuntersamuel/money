@@ -70,7 +70,7 @@ def call_bridge(
     if operation == "place_trade":
         raise RuntimeError("New paper openings are disabled pending verified deployment and readiness")
     key = key_loader()
-    body = {"operation": operation, **(payload or {})}
+    body = {**(payload or {}), "operation": operation}
     request = urllib.request.Request(
         endpoint,
         data=json.dumps(body, separators=(",", ":")).encode("utf-8"),
@@ -217,14 +217,17 @@ def receipt_path(operation: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=["state", "add-scout", "record-proposal", "place-trade", "close-trade"])
+    parser.add_argument("operation", choices=["state", "data-read", "research-state", "add-scout", "record-proposal", "place-trade", "close-trade"])
     parser.add_argument("--payload", type=Path)
     parser.add_argument("--state-path", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--receipt-path", type=Path)
     args = parser.parse_args()
     operation = args.operation.replace("-", "_")
     target_receipt = args.receipt_path or receipt_path(operation)
-    if operation == "state":
+    if operation in {"research_state", "data_read"}:
+        result = call_bridge(operation, load_payload(args.payload) if args.payload else {})
+        atomic_json(target_receipt, result)
+    elif operation == "state":
         result = refresh_state(state_path=args.state_path, receipt_path=target_receipt)
     else:
         if args.payload is None:

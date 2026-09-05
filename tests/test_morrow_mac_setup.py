@@ -107,3 +107,22 @@ class BridgeSafetyTests(unittest.TestCase):
   with self.assertRaisesRegex(RuntimeError,'disabled'):bridge.call_bridge('place_trade',key_loader=no_key)
 
 if __name__=='__main__': unittest.main()
+
+class RuntimeSyncTests(unittest.TestCase):
+ def test_failed_sync_preserves_local_record_then_retry_is_idempotent(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);record=runtime.append(root,'audit','TEST:audit',{'subject':'TEST','status':'blocked'})
+   calls=[]
+   def unavailable(op,payload=None):
+    if op=='research_state':return {'ok':True,'operation':op}
+    raise RuntimeError('TEST interrupted network')
+   with self.assertRaises(RuntimeError):runtime.sync(root,unavailable)
+   self.assertEqual(len(list(runtime.export(root))),1)
+   def bridge(op,payload=None):
+    calls.append(op)
+    if op=='research_state':return {'ok':True,'operation':op}
+    self.assertEqual(payload['record']['idempotency_key'],'mac:'+record['id'])
+    return {'receipt':{'verified':True,'id':'10000000-0000-0000-0000-000000000001','server_sha256':'a'*64}}
+   self.assertEqual(runtime.sync(root,bridge)['synced'],1)
+   self.assertEqual(runtime.sync(root,bridge)['synced'],0)
+   self.assertEqual(calls.count('record_research'),1)

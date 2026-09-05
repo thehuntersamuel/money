@@ -57,4 +57,28 @@ begin
 end; $$;
 revoke all on function public.append_morrow_research(uuid,text,text,jsonb) from public,anon,authenticated;
 grant execute on function public.append_morrow_research(uuid,text,text,jsonb) to service_role;
+create table public.morrow_data_snapshots (
+ id uuid primary key default gen_random_uuid(), provider text not null check(provider in ('alpaca','tiingo','sec')),
+ dataset text not null check(dataset in ('alpaca_sip','tiingo_eod','sec_submissions')),
+ received_at timestamptz not null default clock_timestamp(), display_allowed boolean not null default false,
+ payload jsonb not null check(octet_length(payload::text)<=8000000)
+);
+create index morrow_data_dataset_received on public.morrow_data_snapshots(dataset,received_at desc);
+alter table public.morrow_data_snapshots enable row level security;
+revoke all on public.morrow_data_snapshots from public,anon,authenticated;
+grant select,insert on public.morrow_data_snapshots to service_role;
+create trigger immutable_data_snapshot before update or delete on public.morrow_data_snapshots for each row execute function public.morrow_receipt_immutable();
+create table public.morrow_integration_health (
+ id uuid primary key default gen_random_uuid(), dataset text not null check(dataset in ('alpaca_sip','tiingo_eod','sec_submissions')),
+ checked_at timestamptz not null default clock_timestamp(), status text not null check(status in ('ok','blocked','failed')),
+ detail text not null check(length(detail)<=200), coverage text not null check(length(coverage)<=200)
+);
+create index morrow_health_dataset_time on public.morrow_integration_health(dataset,checked_at desc);
+alter table public.morrow_integration_health enable row level security;
+revoke all on public.morrow_integration_health from public,anon,authenticated;
+grant select on public.morrow_integration_health to authenticated;
+grant select,insert on public.morrow_integration_health to service_role;
+create policy owner_select on public.morrow_integration_health for select to authenticated using(public.is_owner());
+create trigger immutable_integration_health before update or delete on public.morrow_integration_health for each row execute function public.morrow_receipt_immutable();
+
 commit;

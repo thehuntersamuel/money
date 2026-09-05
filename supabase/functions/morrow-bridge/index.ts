@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import {
   buildStateProjection,
   computeSourceEvidenceHash,
@@ -93,6 +93,21 @@ Deno.serve(async (request) => {
       );
     }
 
+    if (operation === 'data_read') {
+      const dataset=String(body.dataset||'');
+      if(!['alpaca_sip','tiingo_eod','sec_submissions'].includes(dataset))return reply(400,{error:'unsupported dataset'});
+      const {data,error}=await db.from('morrow_data_snapshots').select('id,provider,dataset,received_at,display_allowed,payload').eq('dataset',dataset).eq('display_allowed',true).order('received_at',{ascending:false}).limit(1);
+      if(error)return reply(503,{error:'data projection unavailable'});
+      let observations=[];
+      if(dataset==='alpaca_sip'&&data?.length){
+        const symbols=body.symbols;
+        if(symbols!=null&&(!Array.isArray(symbols)||symbols.length>30||symbols.some(s=>typeof s!=='string'||!/^[A-Z][A-Z0-9.-]{0,9}$/.test(s))))return reply(400,{error:'invalid bounded symbols'});
+        let q=db.from('morrow_market_observations').select('source_id,symbol,provider,feed,event_at,received_at,session,bid,ask,last,gap,is_test').eq('is_test',false).order('event_at',{ascending:false}).limit(100);
+        if(symbols?.length)q=q.in('symbol',symbols);
+        const observed=await q;if(observed.error)return reply(503,{error:'observation projection unavailable'});observations=observed.data||[];
+      }
+      return reply(200,{ok:true,operation,dataset,snapshot:data?.[0]||null,observations,observation_limit:100,status:data?.length?'snapshot_available_check_timestamp':'data_unavailable',mutation_calls:0});
+    }
     if (operation === 'research_state') {
       const limit = 100;
       const before = body.before == null ? null : String(body.before);
