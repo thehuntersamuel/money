@@ -2,7 +2,7 @@ import {makeSec,factsKnownAt} from './research-data.mjs';
 import {universe} from './market-data.mjs';
 export const SOURCE_DATASETS=['tiingo_news','sec_company_map','sec_facts','bls_series','fred_vintage','primary_document'];
 const time=x=>typeof x==='string'&&/(Z|[+-]\d{2}:\d{2})$/.test(x)&&Number.isFinite(Date.parse(x));
-const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x));
+const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x))&&new Date(x).toISOString().slice(0,10)===x;
 const sha=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),x=>x.toString(16).padStart(2,'0')).join('');
 async function request(url,{fetchImpl,method='GET',headers={},body}={}){
  let response;
@@ -51,16 +51,18 @@ export async function fetchSource(input,{config,fetchImpl=fetch,now=()=>new Date
   provider='bls';url=new URL('https://api.bls.gov/publicAPI/v1/timeseries/data/');
   const raw=JSON.parse(await request(url,{fetchImpl,method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({seriesid:ids,startyear:String(input.start_year),endyear:String(input.end_year)})}));
   if(raw.status!=='REQUEST_SUCCEEDED')throw Error('BLS request incomplete');
-  payload={series:raw.Results?.series||[],retrieved_at:at,vintage_at:null,release_at:null,historical_decision_eligible:false};coverage='latest_revised_values_not_point_in_time';
+  if(!Array.isArray(raw.Results?.series)||ids.some(id=>!raw.Results.series.some(r=>r.seriesID===id&&Array.isArray(r.data)&&r.data.length)))throw Error('BLS requested series missing');
+  payload={series:raw.Results.series.filter(r=>ids.includes(r.seriesID)),retrieved_at:at,vintage_at:null,release_at:null,historical_decision_eligible:false};coverage='latest_revised_values_not_point_in_time';
  }else if(dataset==='fred_vintage'){
   if(!config.fredKey)return {blocked:'FRED_registration_key_missing'};
   if(!/^[A-Za-z0-9_]{1,50}$/.test(input.series_id||'')||!day(input.vintage)||!day(input.start)||!day(input.end)||input.start>input.end||!time(input.decision_at))throw Error('dated FRED request required');
   // Daily vintage precision cannot establish intraday availability. Require a prior day.
-  if(input.vintage>=input.decision_at.slice(0,10)||Date.parse(input.decision_at)>Date.parse(at))throw Error('vintage must precede decision day');
+  const decisionDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(input.decision_at));
+  if(input.vintage>=decisionDay||input.end>input.vintage||Date.parse(input.decision_at)>Date.parse(at))throw Error('vintage must precede decision day');
   provider='fred';url=new URL('https://api.stlouisfed.org/fred/series/observations');
   for(const [key,value] of Object.entries({api_key:config.fredKey,file_type:'json',series_id:input.series_id,realtime_start:input.vintage,realtime_end:input.vintage,observation_start:input.start,observation_end:input.end,limit:'1000'}))url.searchParams.set(key,value);
-  const raw=JSON.parse(await request(url,{fetchImpl}));if(!Array.isArray(raw.observations)||Number(raw.count)>1000)throw Error('FRED response incomplete');
-  payload={series_id:input.series_id,vintage:input.vintage,decision_at:input.decision_at,release_time_precision:'day_only',observations:raw.observations.map(r=>({date:r.date,vintage_start:r.realtime_start,vintage_end:r.realtime_end,value:r.value==='.'?null:Number.isFinite(Number(r.value))?Number(r.value):null}))};coverage='requested_prior_day_vintage_only';
+  const raw=JSON.parse(await request(url,{fetchImpl}));if(!Array.isArray(raw.observations)||!Number.isInteger(raw.count)||raw.count>1000||raw.count!==raw.observations.length)throw Error('FRED response incomplete');
+  payload={series_id:input.series_id,vintage:input.vintage,decision_at:input.decision_at,release_time_precision:'day_only',observations:raw.observations.map(r=>({date:r.date,vintage_start:r.realtime_start,vintage_end:r.realtime_end,value:r.value==null||String(r.value).trim()===''||r.value==='.'?null:Number.isFinite(Number(r.value))?Number(r.value):null}))};coverage='requested_prior_day_vintage_only';
  }else{
   url=new URL(input.url);
   const official=['www.sec.gov','www.bls.gov','www.bea.gov','www.federalreserve.gov','home.treasury.gov','www.finra.org'];

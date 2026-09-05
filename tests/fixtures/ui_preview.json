@@ -1,0 +1,51 @@
+{
+  "books": [
+    {
+      "book_id": "TEST-BOOK",
+      "label": "Robinhood Savings",
+      "equity": 10000,
+      "stake": 10000,
+      "buying_power": 10000,
+      "cash": 10000,
+      "securities": 0,
+      "realized_pnl": 0,
+      "unrealized_pnl": 0,
+      "n_open": 0,
+      "n_closed": 0,
+      "account_name": "Synthetic account",
+      "mask": "TEST"
+    }
+  ],
+  "book": "TEST-BOOK",
+  "proposals": [
+    {
+      "id": "TEST-PROPOSAL",
+      "book_id": "TEST-BOOK",
+      "symbol": "TEST",
+      "state": "watch",
+      "decision": "wait_for_trigger",
+      "setup": "swing",
+      "horizon": "short",
+      "confidence": 50,
+      "thesis": "Synthetic example: demand improves while margins remain stable.",
+      "catalyst": "Upcoming issuer update; date awaits primary-source confirmation.",
+      "bear_case": "Demand could weaken and invalidate the growth assumptions.",
+      "invalidation": "The next issuer update contradicts the demand thesis.",
+      "entry_condition": "A fresh full review is required after the trigger.",
+      "trigger_direction": "above",
+      "trigger_price": 101,
+      "entry_price": 101,
+      "target_price": 110,
+      "stop_price": 97,
+      "source_freshness": "unknown",
+      "news_checked_at": "2026-09-04T14:00:00Z",
+      "evidence": []
+    }
+  ],
+  "trades": [],
+  "quotes": [],
+  "watchlist": [],
+  "session": [],
+  "mode": "personal",
+  "entities": []
+}

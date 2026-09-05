@@ -20,7 +20,7 @@ The new tables retain immutable close receipts, observations, trigger events, pr
 
 Deploy the updated `morrow-bridge` with its existing custom bearer authentication (`verify_jwt=false` remains intentional). Include `index.ts`, `contract.mjs`, `research.mjs`, and `evaluation.mjs` from its directory. Import version is pinned to Supabase JS 2.57.4.
 
-Deploy `morrow-data` with `verify_jwt=true` and its additional explicit service-role check. Include its `index.ts` and repository-relative `server/data-worker.mjs`, `server/market-data.mjs`, `server/calendar.mjs`, and `server/research-data.mjs`. Preserve relative paths when bundling. It is a service-only ingestion endpoint, never a browser/research credential endpoint. Morrow cannot trigger ingestion through its bridge key.
+Deploy `morrow-data` with `verify_jwt=true` and its additional explicit service-role check. Include its `index.ts` and repository-relative `server/data-worker.mjs`, `server/source-pipelines.mjs`, `server/market-data.mjs`, `server/calendar.mjs`, and `server/research-data.mjs`. Preserve relative paths when bundling. It is a service-only ingestion endpoint, never a browser/research credential endpoint. Morrow cannot trigger ingestion through its bridge key.
 
 Before enabling ingestion, verify the installed project/runtime bundler resolves these files and that disabled requests produce `status: disabled`, unauthorized requests return 401, and no external provider requests occur. The source tests mock transport; this actual deployed smoke test remains necessary.
 
