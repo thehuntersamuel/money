@@ -94,11 +94,23 @@ print('PASS service-role observation/crossing/history/research/health writes and
 print('PASS captured owner RLS/grants: owner receipts, nonowner/anon denial, no raw observations or TRUNCATE')
 print('Native scoped live-schema rehearsal passed; external auth/account services remain synthetic.')
 
+# Reproduce the historical manual-close / still-open proposal defect.
+legacy=fixture(5)
+sql(f"update trades set status='closed',exit_price=102,closed_on=current_date,close_note='TEST historical close' where id='{legacy}'")
+legacy_before=sql(f"select row_to_json(t)::text from trades t where id='{legacy}'")
+repair=(ROOT/'supabase/repairs/reconcile_legacy_closes.sql').read_text()
+sql(repair);sql(repair)
+assert sql(f"select row_to_json(t)::text from trades t where id='{legacy}'")==legacy_before
+assert sql(f"select state||':'||decision from trade_proposals where trade_id='{legacy}'")=='closed:closed'
+assert sql(f"select count(*) from morrow_close_receipts where trade_id='{legacy}'")=='0'
+assert sql("select count(*) from morrow_research_records where idempotency_key like 'legacy-close-reconciled:%'")=='1'
+print('PASS native legacy repair: original trade unchanged, terminal proposal, one audit, no fabricated execution receipt')
+
 ledger_tables=['trades','trade_proposals','morrow_close_receipts','morrow_trigger_events','morrow_proposal_history','morrow_market_observations','morrow_research_records']
 before={table:sql(f'select count(*) from {table}') for table in ledger_tables}
 for path in sorted((ROOT/'supabase/rollbacks').glob('*.sql'),reverse=True):
  if path.name!='20260830000000_morrow_trade_proposals.rollback.sql':sql(path.read_text())
 assert before=={table:sql(f'select count(*) from {table}') for table in ledger_tables}
-assert sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; select count(*) from morrow_research_records").splitlines()[-1]=='1'
+assert sql(f"set role authenticated; set request.jwt.claim.sub='{OWNER}'; select count(*) from morrow_research_records").splitlines()[-1]=='2'
 assert 'permission denied' in sql(f"set role service_role; select append_morrow_research('{BOOK}','audit','TEST:after-rollback','{{}}'::jsonb)",False)
 print('PASS capability rollback preserves all ledger counts and owner reads, revokes new research writes')

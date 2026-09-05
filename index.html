@@ -922,6 +922,7 @@ async function loadAll(){
     session:   function(){ return q("market_session"); },
     watchlist: function(){ return q("watchlist", {order:{col:"symbol",asc:true}}); },
     trades:    function(){ return q("v_trades", {order:{col:"opened_on",asc:false}}); },
+    closeReceipts: function(){return sb.from("morrow_close_receipts").select("trade_id,proposal_id,created_at").order("created_at",{ascending:false}).limit(1001).then(function(r){return {available:!r.error,rows:(r.data||[]).slice(0,1000),truncated:(r.data||[]).length>1000};});},
     integrationHealth: function(){return sb.from("morrow_latest_integration_health").select("dataset,checked_at,status,detail,coverage").order("checked_at",{ascending:false}).limit(30).then(function(r){return {available:!r.error,rows:r.data||[]};});},
     research: function(){ return sb.from("morrow_research_records")
       .select("id,book_id,kind,created_at,payload,server_sha256").order("created_at",{ascending:false}).limit(101)
@@ -2649,17 +2650,24 @@ function renderProposals(book){
        rather than only in the blotter further down the page. */
     var t = p.trade_id ? (D.trades||[]).filter(function(x){ return x.id === p.trade_id; })[0] : null;
     if(t){
-      var cost = tradeCost(t), risk = tradeRisk(t);
+      var cost = tradeCost(t), risk = tradeRisk(t), closed = t.status === "closed";
       h += cell("Qty", String(t.qty), "shares")
         /* The total actually wagered, with the arithmetic spelled out, because
            "15" and "$219.57" sitting in separate cells is not the same as
            being told the position is $3,293.55. */
         + cell("Total in", cost == null ? "—" : fmt2(cost),
             String(t.qty) + " \u00d7 " + fmt2(Number(t.entry_price)))
-        + cell("At risk", risk == null ? "—" : "-" + fmt2(risk), "if the stop fills")
-        + cell("Open P&L", signed(t.pnl||0),
+        + cell(closed ? "Entry planned risk" : "At risk", risk == null ? "—" : "-" + fmt2(risk), closed ? "historical, not current exposure" : "if the stop fills")
+        + cell(closed ? "Realized P&L" : "Open P&L", t.pnl == null ? "—" : signed(t.pnl),
             t.pnl_pct == null ? "since entry" : (Number(t.pnl_pct) >= 0 ? "+" : "") + Number(t.pnl_pct).toFixed(2) + "% since entry",
-            null, pnlColor(t.pnl||0));
+            null, t.pnl == null ? null : pnlColor(t.pnl));
+      if(closed){
+        h += cell("Exit", t.exit_price == null ? "—" : fmt2(Number(t.exit_price)), shortDate(t.closed_on));
+        var receipts=D.closeReceipts||{};
+        var receipt=(receipts.rows||[]).find(function(r){return r.trade_id===t.id;});
+        h += cell("Close evidence", receipt ? "Canonical receipt" : receipts.available && !receipts.truncated ? "Original receipt unavailable" : "Receipt lookup incomplete", receipt ? receipt.trade_id : "Historical close; excluded from verified execution outcomes");
+        if(p.state!=="closed")h+=cell("Reconciliation", "Required", "Trade is closed; proposal state differs");
+      }
     }
     return '<div class="level-strip">'+h+'</div>';
   }
@@ -2970,7 +2978,7 @@ function renderTrade(){
         if(t.stop_breached) flags += '<span class="pill" style="color:var(--danger);border-color:var(--danger)">stop hit</span> ';
         if(t.target_hit)    flags += '<span class="pill" style="color:var(--success);border-color:var(--success)">target hit</span> ';
         if(t.is_real)       flags += '<span class="pill">REAL</span> ';
-        var cost = tradeCost(t), risk = tradeRisk(t);
+        var cost = tradeCost(t), risk = tradeRisk(t), closed = t.status === "closed";
         var costPct = pctOf(cost, bk.equity), riskPct = pctOf(risk, bk.equity);
         h += '<tr><td><strong>'+esc(t.symbol)+'</strong> '
           +  '<span class="small muted">'+esc(t.direction==="short"?"short":"long")+' · '+esc(t.horizon)+' term</span>'
