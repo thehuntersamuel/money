@@ -24,7 +24,7 @@ export async function supervise({connect,signal,sleep=ms=>new Promise(r=>setTime
  throw Error('SIP reconnect budget exhausted; operator review required');
 }
 async function main(){
- if(process.env.MORROW_INGEST_ENABLED!=='true'){console.log(JSON.stringify({status:'disabled',new_openings_allowed:false}));if(process.env.MORROW_PARK_ON_FAILURE==='true')await parkUntilStopped();return;}
+ if(process.env.MORROW_INGEST_ENABLED!=='true'){const parked=process.env.MORROW_PARK_ON_FAILURE==='true'?parkUntilStopped():null;console.log(JSON.stringify({status:'disabled',new_openings_allowed:false}));if(parked)await parked;return;}
  const env=process.env;
  if(env.ALPACA_LICENSE_APPROVED!=='true'||env.ALPACA_ARCHIVE_APPROVED!=='true'||!env.ALPACA_API_KEY_ID||!env.ALPACA_API_SECRET_KEY||!env.SUPABASE_SERVICE_ROLE_KEY)throw Error('server licensing or credential configuration missing');
  const budget=createAttemptBudget({directory:env.MORROW_STATE_DIR,runId:env.MORROW_STREAM_RUN_ID});
@@ -41,4 +41,4 @@ async function main(){
  try{await supervise({beforeAttempt:()=>budget.reserve(),signal:abort.signal,onHeartbeat:health=>onHealth(health||{status:'coverage_unknown_or_stale'}),connect:()=>connectSip({symbols,keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY,licensed:true,store,calendar,onHealth})});}
  catch(error){await onHealth({status:'stream_stopped_operator_review_required'}).catch(()=>{});throw error;}
 }
-if(import.meta.url===new URL(process.argv[1]||'', 'file://').href)main().catch(async()=>{console.error('Morrow SIP worker stopped; inspect readiness and server configuration.');if(process.env.MORROW_PARK_ON_FAILURE==='true')await parkUntilStopped();else process.exitCode=1;});
+if(import.meta.url===new URL(process.argv[1]||'', 'file://').href)main().catch(async()=>{const parked=process.env.MORROW_PARK_ON_FAILURE==='true'?parkUntilStopped():null;console.error('Morrow SIP worker stopped; inspect readiness and server configuration.');if(parked)await parked;else process.exitCode=1;});
