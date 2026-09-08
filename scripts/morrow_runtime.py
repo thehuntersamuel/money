@@ -96,6 +96,9 @@ def connect(root):
  CREATE TABLE IF NOT EXISTS sync_receipts(local_id TEXT PRIMARY KEY REFERENCES records(id),remote_id TEXT NOT NULL,server_sha256 TEXT NOT NULL,synced_at TEXT NOT NULL);
  CREATE TRIGGER IF NOT EXISTS immutable_sync_update BEFORE UPDATE ON sync_receipts BEGIN SELECT RAISE(ABORT,'append-only sync receipts'); END;
  CREATE TRIGGER IF NOT EXISTS immutable_sync_delete BEFORE DELETE ON sync_receipts BEGIN SELECT RAISE(ABORT,'append-only sync receipts'); END;
+ CREATE TABLE IF NOT EXISTS sync_issues(local_id TEXT NOT NULL REFERENCES records(id),reason TEXT NOT NULL,first_seen TEXT NOT NULL,PRIMARY KEY(local_id,reason));
+ CREATE TRIGGER IF NOT EXISTS immutable_issue_update BEFORE UPDATE ON sync_issues BEGIN SELECT RAISE(ABORT,'append-only sync issues'); END;
+ CREATE TRIGGER IF NOT EXISTS immutable_issue_delete BEFORE DELETE ON sync_issues BEGIN SELECT RAISE(ABORT,'append-only sync issues'); END;
  CREATE TRIGGER IF NOT EXISTS immutable_update BEFORE UPDATE ON records BEGIN SELECT RAISE(ABORT,'append-only ledger'); END;
  CREATE TRIGGER IF NOT EXISTS immutable_delete BEFORE DELETE ON records BEGIN SELECT RAISE(ABORT,'append-only ledger'); END;
  ''')
@@ -132,7 +135,7 @@ def snapshot(root):
  try:
   counts=dict(db.execute('SELECT kind,COUNT(*) FROM records GROUP BY kind'))
   return {'mode':'exploratory_research','new_openings_allowed':False,'real_trading_allowed':False,
-   'champion':None,'evaluation_started_at':None,'providers':{'alpaca':'disabled_pending_owner','tiingo':'disabled_pending_owner'},
+   'champion':None,'evaluation_started_at':None,'providers':{'alpaca':'verify_current_bridge_evidence','tiingo':'verify_current_bridge_evidence'},
    'local_record_counts':counts,'hub_sync':'sidecars_only','actual_route':'unknown_until_runtime_evidence_review',
    'blockers':['backend_deployment_unverified','provider_entitlement_unverified','calendar_unknown','champion_not_activated','native_concurrency_review_pending']}
  finally: db.close()
@@ -156,24 +159,42 @@ def sync(root, call=None):
  db=connect(root)
  try:
   mapping=dict(db.execute('SELECT local_id,remote_id FROM sync_receipts'))
-  synced=0
-  for record in export(root):
+  synced=0;issues=[];attempted=0
+  records=list(export(root));local_ids={record['id'] for record in records}
+  def issue(record,reason):
+   issues.append({'local_id':record['id'],'reason':reason})
+   with db: db.execute('INSERT OR IGNORE INTO sync_issues VALUES(?,?,?)',(record['id'],reason,now()))
+  for record in records:
    if record['id'] in mapping: continue
+   if attempted>=100: break
+   attempted+=1
+   try:
+    validate(record['kind'],record['payload'])
+    expected=hashlib.sha256((record['kind']+'\n'+canonical(record['payload'])).encode()).hexdigest()
+    if expected!=record['local_sha256']: raise ValueError('hash mismatch')
+   except (ValueError,TypeError,KeyError):
+    issue(record,'local_validation_failed');continue
    payload=dict(record['payload'])
+   refs=[v for key in ('source_ids','input_ids','output_ids') for v in payload.get(key,[])]+[payload[k] for k in ('strategy_id','decision_id') if payload.get(k)]
+   if any(v in local_ids and v not in mapping for v in refs):
+    issue(record,'dependency_not_synced');continue
    for key in ('source_ids','input_ids','output_ids'):
     if key in payload: payload[key]=[mapping.get(v,v) for v in payload[key]]
    for key in ('strategy_id','decision_id'):
     if payload.get(key): payload[key]=mapping.get(payload[key],payload[key])
-   result=call('record_research',{'record':{'kind':record['kind'],'idempotency_key':'mac:'+record['id'],'payload':payload}})
+   try:
+    result=call('record_research',{'record':{'kind':record['kind'],'idempotency_key':'mac:'+record['id'],'payload':payload}})
+   except (RuntimeError,ValueError,OSError):
+    issue(record,'server_rejected_or_unavailable');continue
    receipt=result.get('receipt') or {}
    if receipt.get('verified') is not True or not re.fullmatch('[a-f0-9-]{36}',str(receipt.get('id',''))) or not re.fullmatch('[a-f0-9]{64}',str(receipt.get('server_sha256',''))):
-    raise ValueError('server research readback missing')
+    issue(record,'server_readback_missing');continue
    with db:
     db.execute('INSERT OR IGNORE INTO sync_receipts VALUES(?,?,?,?)',(record['id'],receipt['id'],receipt['server_sha256'],now()))
     stored=db.execute('SELECT remote_id,server_sha256 FROM sync_receipts WHERE local_id=?',(record['id'],)).fetchone()
     if stored!=(receipt['id'],receipt['server_sha256']): raise ValueError('sync receipt conflict')
    mapping[record['id']]=receipt['id'];synced+=1
-  return {'synced':synced,'new_openings_allowed':False,'provider_credentials_read':False}
+  return {'synced':synced,'status':'partial' if issues else 'ok','issues':issues,'pending':sum(r['id'] not in mapping for r in records),'new_openings_allowed':False,'provider_credentials_read':False}
  finally: db.close()
 
 def main():
@@ -184,7 +205,9 @@ def main():
  a=p.parse_args()
  try:
   if a.command=='status': print(canonical(snapshot(a.root)))
-  elif a.command=='sync': print(canonical(sync(a.root)))
+  elif a.command=='sync':
+   result=sync(a.root);print(canonical(result))
+   if result['pending']: return 2
   elif a.command=='export':
    for row in export(a.root): print(canonical(row))
   else: print(canonical(append(a.root,a.kind,a.key,json.loads(a.payload.read_text()))))

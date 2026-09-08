@@ -6,6 +6,10 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const source=html.slice(html.indexOf('function providerPresentation('),html.indexOf('function renderMorrowSummary('));
 const present=runInNewContext(source+';providerPresentation');
 const now=Date.parse('2026-09-05T05:00:00Z');
+test('a stopped feed shows its failure even when the last heartbeat is old',()=>{
+ const result=present({available:true,rows:[{dataset:'alpaca_sip',status:'failed',checked_at:'2026-09-04T08:12:27Z',detail:JSON.stringify({s:'stream_stopped_operator_review_required',r:'stream_backpressure_gap',e:Date.parse('2026-09-04T08:12:19Z')})}]},'alpaca_sip',now);
+ assert.equal(result.title,'Price feed stopped');assert.match(JSON.stringify(result),/Last saved market event/);
+});
 test('provider UI never promotes missing, blocked, future or stale receipts to healthy',()=>{
  assert.equal(present(null,'alpaca_sip',now).title,'Status unavailable');
  assert.equal(present({available:true,rows:[]},'tiingo_news',now).title,'Awaiting ingestion receipt');

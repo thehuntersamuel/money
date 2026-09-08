@@ -1,6 +1,14 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {fetchSource} from '../server/source-pipelines.mjs';
 const now=()=> '2026-09-05T15:00:00Z';
+test('market-wide news ingestion keeps valid articles and reports partial coverage',async()=>{
+ const config={tiingoKey:'TEST',tiingoLicensed:true,tiingoNewsApproved:true,tiingoArchiveApproved:true};
+ const result=await fetchSource({dataset:'tiingo_news'},{config,now,fetchImpl:async url=>{
+  assert(!url.searchParams.has('tickers'));
+  return Response.json([{id:1,title:'TEST',url:'https://example.com/a'},{id:2,title:'TEST invalid',url:'http://example.com/b'}]);
+ }});
+ assert.equal(result.payload.length,1);assert.equal(result.quality.rejected,1);assert.equal(result.coverage,'partial_news_invalid_items_excluded');
+});
 test('news needs dataset and archive approval and remains discovery-only',async()=>{
  let requests=0;const config={tiingoKey:'TEST',tiingoLicensed:true,tiingoNewsApproved:true,tiingoArchiveApproved:true};
  const fetchImpl=async(url,options)=>{requests++;assert.equal(url.hostname,'api.tiingo.com');assert(!url.href.includes('TEST'));assert.equal(options.headers.Authorization,'Token TEST');return Response.json([{id:1,title:'TEST news',url:'https://example.com/a?tracking=1',publishedDate:'2026-09-04T15:00:00Z',crawlDate:'2026-09-04T15:01:00Z',tickers:['SPY']}]);};

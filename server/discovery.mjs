@@ -3,6 +3,19 @@ import {universe,makeMarketData} from './market-data.mjs';
 import {makeTiingo} from './research-data.mjs';
 const day=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
 const stamp=s=>typeof s==='string'&&/(Z|[+-]\d{2}:\d{2})$/.test(s)&&Number.isFinite(Date.parse(s));
+export function normalizeNews(rows,limit){
+ if(!Array.isArray(rows)||rows.length>limit)throw Error('invalid news response');
+ const data=[],ids=new Set(),urls=new Set();let rejected=0,duplicates=0;
+ for(const r of rows){
+  try{
+   const u=new URL(r.url);if(u.protocol!=='https:'||u.username||u.password||r.id==null||typeof r.title!=='string'||!r.title.trim())throw Error();
+   u.search='';u.hash='';const id=String(r.id);
+   if(ids.has(id)||urls.has(u.href)){duplicates++;continue;}ids.add(id);urls.add(u.href);
+   data.push({source_id:id,title:r.title.slice(0,500),url:u.href,published_at:stamp(r.publishedDate)?r.publishedDate:null,crawled_at:stamp(r.crawlDate)?r.crawlDate:null,tickers:Array.isArray(r.tickers)?r.tickers.filter(s=>typeof s==='string').slice(0,100):[],primary_verification_required:true});
+  }catch{rejected++;}
+ }
+ return {data,quality:{received:rows.length,accepted:data.length,rejected,duplicates,result_limit_reached:rows.length===limit},coverage:rejected?'partial_news_invalid_items_excluded':rows.length===limit?'result_limit_reached_narrow_time_window':'returned_news_window_not_exhaustive'};
+}
 export async function boundedBytes(response,maximum=8000000){
  if(!response.ok)throw Error(`provider status ${response.status}`);
  const reader=response.body.getReader(),chunks=[];let total=0;
@@ -25,9 +38,19 @@ export async function tiingoDirectory(bytes){
  const records=lines.map(line=>{const cells=line.split(',');if(cells.length!==headers.length||cells.some(c=>c.includes('"')))throw Error('unsupported directory CSV');return Object.fromEntries(headers.map((h,i)=>[h,cells[i]||null]));});
  return records.map(r=>({symbol:r.ticker,name:null,exchange:r.exchange||null,asset_type:r.assetType||null,start_date:r.startDate,end_date:r.endDate,availability:'directory_listing_requires_metadata_check'}));
 }
-export function makeDiscovery({config,fetchImpl=fetch,clock=()=>Date.now()}){
+export function makeDiscovery({config,fetchImpl=fetch,clock=()=>Date.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms))}){
  const cache=new Map();
- async function request(url,headers){let r;try{r=await fetchImpl(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000),headers});}catch{throw Error('provider unavailable');}return r;}
+ async function request(url,headers){
+  for(let attempt=0;attempt<3;attempt++){
+   let response;try{response=await fetchImpl(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000),headers});}catch{throw Error('provider_network_failure');}
+   if((response.status===429||response.status>=500)&&attempt<2){
+    const pause=Math.min(5000,Math.max(500,Number(response.headers.get('retry-after'))*1000||500*2**attempt));
+    await response.body?.cancel();await sleep(pause);continue;
+   }
+   if(!response.ok)throw Error('provider_http_'+response.status);
+   return response;
+  }
+ }
  async function json(url,headers){return JSON.parse(new TextDecoder().decode(await boundedBytes(await request(url,headers))));}
  return async function discover(input){
   const provider=input.provider||'alpaca',action=input.action;
@@ -38,7 +61,7 @@ export function makeDiscovery({config,fetchImpl=fetch,clock=()=>Date.now()}){
   const key=provider==='alpaca'?config.alpacaKey:config.tiingoKey;
   if(!licensed||!archive||!display||!key||(provider==='alpaca'&&!config.alpacaSecret))return {status:'blocked',reason:'provider_keys_or_approved_use_missing',provider,action};
   const headers=provider==='alpaca'?{'APCA-API-KEY-ID':key,'APCA-API-SECRET-KEY':config.alpacaSecret}:{Authorization:`Token ${key}`,Accept:'application/json'};
-  const at=new Date(clock()).toISOString();let data,coverage,next=null,source;
+  const at=new Date(clock()).toISOString();let data,coverage,next=null,source,quality;
   if(action==='universe'||action==='search'){
    const query=String(input.query||'').trim().toLowerCase();if(query.length>100)throw Error('search too long');
    const offset=input.offset??0,limit=input.limit??100;if(!Number.isInteger(offset)||offset<0||offset>250000||!Number.isInteger(limit)||limit<1||limit>500)throw Error('invalid discovery page');
@@ -63,9 +86,9 @@ export function makeDiscovery({config,fetchImpl=fetch,clock=()=>Date.now()}){
    const url=new URL('https://api.tiingo.com/tiingo/news');url.searchParams.set('limit',String(limit));url.searchParams.set('sortBy','crawlDate');
    if(symbols)url.searchParams.set('tickers',symbols.join(','));
    if(input.start!=null){if(!day(input.start)||!day(input.end)||input.end<input.start||Date.parse(input.end)-Date.parse(input.start)>31*86400000)throw Error('news window must be within 31 days');url.searchParams.set('startDate',input.start);url.searchParams.set('endDate',input.end);}
-   const rows=await json(url,headers);if(!Array.isArray(rows)||rows.length>limit)throw Error('invalid news response');
-   data=rows.map(r=>{const u=new URL(r.url);if(u.protocol!=='https:'||u.username||u.password)throw Error('invalid article URL');return {source_id:String(r.id),title:String(r.title||'').slice(0,500),url:u.href,published_at:stamp(r.publishedDate)?r.publishedDate:null,crawled_at:stamp(r.crawlDate)?r.crawlDate:null,tickers:Array.isArray(r.tickers)?r.tickers.slice(0,100):[],primary_verification_required:true};});
-   source=url.href;coverage=rows.length===limit?'result_limit_reached_narrow_time_window':'returned_news_window_not_exhaustive';
+   const rows=await json(url,headers);({data,quality,coverage}=normalizeNews(rows,limit));
+   source=url.href;
+   if(rows.length&&!data.length)return {status:'blocked',reason:'no_usable_news_items',provider,action,data,quality,retrieved_at:at,coverage,source,read_only:true};
   }else if(action==='metadata'){
    universe([input.symbol]);source=provider==='alpaca'?`https://paper-api.alpaca.markets/v2/assets/${encodeURIComponent(input.symbol)}`:`https://api.tiingo.com/tiingo/daily/${encodeURIComponent(input.symbol)}`;
    const r=await json(source,headers);if(!r||typeof r!=='object'||Array.isArray(r))throw Error('invalid metadata');
@@ -81,6 +104,6 @@ export function makeDiscovery({config,fetchImpl=fetch,clock=()=>Date.now()}){
     if(r.next_page_token)throw Error('history page incomplete; narrow date window');data=r.bars[input.symbol]||[];source=url.href;coverage='requested_raw_daily_SIP_bars';
    }
   }
-  return {status:'ok',provider,action,data,retrieved_at:at,source,coverage,read_only:true};
+  return {status:'ok',provider,action,data,retrieved_at:at,source,coverage,...(quality?{quality}:{}),read_only:true};
  };
 }

@@ -1,5 +1,6 @@
 import {makeSec,factsKnownAt} from './research-data.mjs';
 import {universe} from './market-data.mjs';
+import {normalizeNews} from './discovery.mjs';
 export const SOURCE_DATASETS=['tiingo_news','sec_company_map','sec_facts','bls_series','fred_vintage','primary_document'];
 const time=x=>typeof x==='string'&&/(Z|[+-]\d{2}:\d{2})$/.test(x)&&Number.isFinite(Date.parse(x));
 const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x))&&new Date(x).toISOString().slice(0,10)===x;
@@ -18,18 +19,17 @@ async function request(url,{fetchImpl,method='GET',headers={},body}={}){
  return new TextDecoder().decode(bytes);
 }
 export async function fetchSource(input,{config,fetchImpl=fetch,now=()=>new Date().toISOString()}){
- const {dataset}=input,at=now();let provider,url,payload,coverage,displayAllowed=true;
+ const {dataset}=input,at=now();let provider,url,payload,coverage,quality,displayAllowed=true;
  if(!SOURCE_DATASETS.includes(dataset))throw Error('unsupported source dataset');
  if(dataset==='tiingo_news'){
   if(!config.tiingoKey||!config.tiingoLicensed||!config.tiingoNewsApproved||!config.tiingoArchiveApproved)return {blocked:'Tiingo_news_entitlement_or_archive_missing'};
-  const symbols=universe(input.symbols||[]);if(symbols.length>5)throw Error('news universe capped at five');
-  provider='tiingo';url=new URL('https://api.tiingo.com/tiingo/news');url.searchParams.set('tickers',symbols.join(','));url.searchParams.set('limit','50');
+  const symbols=input.symbols==null?null:universe(input.symbols);if(symbols&&symbols.length>5)throw Error('news universe capped at five');
+  provider='tiingo';url=new URL('https://api.tiingo.com/tiingo/news');if(symbols)url.searchParams.set('tickers',symbols.join(','));url.searchParams.set('limit','50');
   const raw=JSON.parse(await request(url,{fetchImpl,headers:{Authorization:`Token ${config.tiingoKey}`,Accept:'application/json'}}));
-  if(!Array.isArray(raw)||raw.length>50)throw Error('news response exceeds budget');
-  payload=raw.map(row=>{
-   const u=new URL(row.url);if(u.protocol!=='https:'||u.username||u.password)throw Error('invalid news URL');u.search='';u.hash='';
-   return {source_id:'tiingo-news:'+String(row.id),url:u.href,title:String(row.title||'').slice(0,500),published_at:time(row.publishedDate)?row.publishedDate:null,crawled_at:time(row.crawlDate)?row.crawlDate:null,tickers:(row.tickers||[]).filter(s=>typeof s==='string').slice(0,30),source_type:'news_discovery',primary_verification_required:true};
-  });displayAllowed=config.tiingoDisplayAllowed===true;coverage='latest_50_discovery_only';
+  const normalized=normalizeNews(raw,50);quality=normalized.quality;
+  if(raw.length&&!normalized.data.length)return {blocked:'no_usable_news_items',quality};
+  payload=normalized.data.map(row=>({...row,source_id:'tiingo-news:'+row.source_id,tickers:row.tickers.slice(0,30),source_type:'news_discovery'}));
+  displayAllowed=config.tiingoDisplayAllowed===true;coverage=normalized.coverage;
  }else if(dataset==='sec_company_map'){
   if(!config.secUserAgent)return {blocked:'SEC_identification_missing'};
   const symbols=universe(input.symbols||[]);provider='sec';url=new URL('https://www.sec.gov/files/company_tickers.json');
@@ -74,5 +74,5 @@ export async function fetchSource(input,{config,fetchImpl=fetch,now=()=>new Date
   coverage='fingerprint_only_release_time_requires_verification';
  }
  const sourceUrl=new URL(url);sourceUrl.search='';sourceUrl.hash='';
- return {provider,dataset,payload,displayAllowed,coverage,provenance:{url:sourceUrl.href,retrieved_at:at,content_sha256:await sha(JSON.stringify(payload))}};
+ return {provider,dataset,payload,displayAllowed,coverage,...(quality?{quality}:{}),provenance:{url:sourceUrl.href,retrieved_at:at,content_sha256:await sha(JSON.stringify(payload))}};
 }

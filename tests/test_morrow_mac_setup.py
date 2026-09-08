@@ -89,7 +89,7 @@ class RuntimeTests(unittest.TestCase):
   runtime.append(self.root,'run','test:run',run)
   s=runtime.snapshot(self.root)
   self.assertFalse(s['new_openings_allowed']);self.assertIsNone(s['champion']);self.assertIsNone(s['evaluation_started_at'])
-  self.assertEqual(s['providers']['alpaca'],'disabled_pending_owner')
+  self.assertEqual(s['providers']['alpaca'],'verify_current_bridge_evidence')
  def test_full_research_references_and_repeat(self):
   ids=[]
   for i in range(2):
@@ -109,6 +109,31 @@ class BridgeSafetyTests(unittest.TestCase):
 if __name__=='__main__': unittest.main()
 
 class RuntimeSyncTests(unittest.TestCase):
+ def test_rejected_source_does_not_block_independent_records_or_lose_history(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)
+   source={'url':'https://example.com/TEST','title':'TEST','source_type':'issuer','retrieved_at':'2026-09-05T00:00:00Z','retention_note':'metadata only'}
+   bad=runtime.append(root,'source','TEST:bad',source)['id']
+   dependent=runtime.append(root,'decision','TEST:decision',{'proposal_key':'TEST:v1','symbol':'SPY','disposition':'watch','horizon':'swing','thesis':'TEST','bear_case':'TEST','benchmark':'SPY','missing_data':['source unavailable'],'source_ids':[bad]})['id']
+   good=runtime.append(root,'audit','TEST:good',{'subject':'TEST independent','status':'blocked'})['id']
+   before=list(runtime.export(root));calls=[]
+   def bridge(op,payload=None):
+    if op=='research_state':return {'ok':True,'operation':op}
+    key=payload['record']['idempotency_key'];calls.append(key)
+    if key=='mac:'+bad:raise RuntimeError('rejected test source')
+    return {'receipt':{'verified':True,'id':'10000000-0000-0000-0000-000000000001','server_sha256':'a'*64}}
+   result=runtime.sync(root,bridge)
+   self.assertEqual(result['synced'],1);self.assertEqual(result['pending'],2)
+   self.assertEqual(result['status'],'partial')
+   self.assertEqual(calls,['mac:'+bad,'mac:'+good])
+   self.assertIn({'local_id':dependent,'reason':'dependency_not_synced'},result['issues'])
+   self.assertEqual(list(runtime.export(root)),before)
+   result=runtime.sync(root,bridge);self.assertEqual(result['synced'],0)
+   db=runtime.connect(root)
+   try:
+    self.assertEqual(db.execute('SELECT COUNT(*) FROM sync_issues').fetchone()[0],2)
+    with self.assertRaises(Exception):db.execute('DELETE FROM sync_issues')
+   finally:db.close()
  def test_failed_sync_preserves_local_record_then_retry_is_idempotent(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp);record=runtime.append(root,'audit','TEST:audit',{'subject':'TEST','status':'blocked'})
@@ -116,7 +141,7 @@ class RuntimeSyncTests(unittest.TestCase):
    def unavailable(op,payload=None):
     if op=='research_state':return {'ok':True,'operation':op}
     raise RuntimeError('TEST interrupted network')
-   with self.assertRaises(RuntimeError):runtime.sync(root,unavailable)
+   self.assertEqual(runtime.sync(root,unavailable)['pending'],1)
    self.assertEqual(len(list(runtime.export(root))),1)
    def bridge(op,payload=None):
     calls.append(op)
