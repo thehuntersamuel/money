@@ -3590,8 +3590,17 @@ function decisionLabel(state){return ({watch:'Watching',rejected:'Passed on',qua
 function providerPresentation(health, dataset, now){
   if(!health||!health.available)return {title:'Status unavailable',note:'The Hub could not load provider health. Connection and freshness are unverified.'};
   var row=(health.rows||[]).find(function(r){return r.dataset===dataset;});
-  if(!row)return {title:'Awaiting ingestion receipt',note:'No saved feed receipt is available. A working API key alone does not confirm scheduled delivery.'};
+  if(!row)return {title:'Awaiting ingestion receipt',note:'No ingestion has been recorded. On-demand research queries are separate; this does not establish whether those queries work.'};
   var age=now-Date.parse(row.checked_at);
+  var detail={};try{detail=JSON.parse(row.detail||'{}');}catch(e){}
+  var reason=detail.r||detail.reason,code=detail.s||detail.status;
+  var lastEvent=detail.e||detail.event_at;
+  if(row.status==='failed'&&code){
+    var labels={stream_backpressure_gap:'The worker could not keep up with incoming data.',stream_stale_coverage_gap:'The stream missed confirmed market events.',stream_stopped_operator_review_required:'The worker stopped and needs recovery.'};
+    var note=labels[reason]||labels[code]||'The data worker reported a failure. Technical review is required.';
+    if(lastEvent&&Number.isFinite(new Date(lastEvent).getTime()))note+=' Last saved market event: '+new Date(lastEvent).toLocaleString()+'.';
+    return {title:'Price feed stopped',note:note,at:row.checked_at};
+  }
   if(!Number.isFinite(age)||age<0||age>600000)return {title:'Receipt needs refresh',note:'The last report is too old to establish current feed health.',at:row.checked_at};
   return {title:row.status==='ok'?'Feed reporting healthy':row.status==='failed'?'Feed needs attention':'Awaiting verified coverage',note:row.coverage||'Coverage has not been reported.',at:row.checked_at};
 }

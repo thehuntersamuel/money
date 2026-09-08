@@ -3,6 +3,23 @@ import {makeDiscovery,tiingoDirectory} from '../server/discovery.mjs';
 import {streamUniverse,subscriptionLoader} from '../server/subscriptions.mjs';
 import {ensureResearchWatchlist} from '../supabase/functions/morrow-bridge/watchlist.mjs';
 const config={alpacaKey:'TEST',alpacaSecret:'TEST-secret',alpacaLicensed:true,alpacaArchiveApproved:true,alpacaDisplayAllowed:true,tiingoKey:'TEST',tiingoLicensed:true,tiingoArchiveApproved:true,tiingoDisplayAllowed:true,tiingoNewsApproved:true};
+test('one invalid news URL cannot discard valid articles, and duplicate IDs are counted',async()=>{
+ const article={id:1,title:'TEST news',url:'https://example.com/news',publishedDate:'2026-09-04T15:00:00Z'};
+ const gateway=makeDiscovery({config,fetchImpl:async()=>Response.json([article,{...article,id:2,url:'http://example.com/unsafe'},{...article},null])});
+ const result=await gateway({provider:'tiingo',action:'news'});
+ assert.equal(result.status,'ok');assert.equal(result.data.length,1);
+ assert.deepEqual(result.quality,{received:4,accepted:1,rejected:2,duplicates:1,result_limit_reached:false});
+ assert.equal(result.coverage,'partial_news_invalid_items_excluded');
+ const blocked=makeDiscovery({config,fetchImpl:async()=>Response.json([{...article,url:'http://example.com'}])});
+ assert.equal((await blocked({provider:'tiingo',action:'news'})).reason,'no_usable_news_items');
+});
+test('transient news failures retry within a bound while authentication failures do not',async()=>{
+ let calls=0;const pauses=[];
+ const gateway=makeDiscovery({config,sleep:async ms=>pauses.push(ms),fetchImpl:async()=>++calls<3?new Response('',{status:429,headers:{'retry-after':'999'}}):Response.json([])});
+ assert.equal((await gateway({provider:'tiingo',action:'news'})).status,'ok');assert.equal(calls,3);assert.deepEqual(pauses,[5000,5000]);
+ calls=0;const denied=makeDiscovery({config,fetchImpl:async()=>{calls++;return new Response('',{status:401})}});
+ await assert.rejects(()=>denied({provider:'tiingo',action:'news'}),/provider_http_401/);assert.equal(calls,1);
+});
 test('Alpaca universe is paged across supported stocks, never tied to the watchlist',async()=>{
  let requests=0;const gateway=makeDiscovery({config,fetchImpl:async(url,o)=>{requests++;assert.equal(o.method,'GET');assert.match(String(url),/paper-api.alpaca.markets\/v2\/assets/);return Response.json(['AAPL','MSFT','SPY'].map(symbol=>({symbol,name:symbol,class:'us_equity',status:'active',exchange:'NASDAQ'})));}});
  const first=await gateway({action:'universe',limit:2}),second=await gateway({action:'universe',offset:first.next_offset,limit:2});assert.equal(first.total,3);assert.deepEqual(second.data.map(r=>r.symbol),['SPY']);assert.equal(second.next_offset,null);assert.equal(requests,1);

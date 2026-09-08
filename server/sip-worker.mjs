@@ -16,12 +16,18 @@ export async function supervise({connect,signal,sleep=ms=>new Promise(r=>setTime
    let ticks=0;
    while(!signal.aborted&&connected()){await sleep(1000);await worker.drain();const health=worker.checkHealth?await worker.checkHealth():null;if(++ticks%30===0){if(refreshSymbols)await worker.updateSymbols(await refreshSymbols());await onHeartbeat(health);}}
    if(signal.aborted)return {stopped:true};
-  }catch{onFailure({reason:'connection_or_persistence_failure',attempt:attempt+1});}
+  }catch{await onFailure({status:'failed',reason:worker?.failure?.()||'connection_or_persistence_failure',attempt:attempt+1});}
   finally{worker?.stop();if(worker)await worker.drain().catch(()=>{});}
   if(attempt+1<maxAttempts&&!signal.aborted)await sleep(Math.min(30000,1000*2**attempt));
  }
  if(signal.aborted)return {stopped:true};
  throw Error('SIP reconnect budget exhausted; operator review required');
+}
+export function healthDetail(value){
+ const text=x=>typeof x==='string'&&/^[a-z0-9_]+$/.test(x)?x.slice(0,48):null;
+ const time=x=>Number.isFinite(Date.parse(x))?Date.parse(x):null;
+ const detail={s:text(value.status),r:text(value.reason),e:time(value.last_event_at),p:time(value.last_persisted_at),q:Number.isInteger(value.pending_records)?Math.max(0,Math.min(20000,value.pending_records)):0};
+ return JSON.stringify(detail);
 }
 async function main(){
  if(process.env.MORROW_INGEST_ENABLED!=='true'){const parked=process.env.MORROW_PARK_ON_FAILURE==='true'?parkUntilStopped():null;console.log(JSON.stringify({status:'disabled',new_openings_allowed:false}));if(parked)await parked;return;}
@@ -35,12 +41,17 @@ async function main(){
  const store=supabaseObservationStore({url,serviceRole:env.SUPABASE_SERVICE_ROLE_KEY});
  const calendar=makeCalendar({keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY});
  const abort=new AbortController();for(const name of ['SIGINT','SIGTERM'])process.once(name,()=>abort.abort());
+ let lastHealth={};
  const onHealth=async value=>{
+  lastHealth={...lastHealth,...value};
+  if(value.status==='sip_subscribed')lastHealth.reason=null;
+  value={...lastHealth,status:value.status};
+  if(['failed','stream_stopped_operator_review_required','sip_subscribed'].includes(value.status))console.log(JSON.stringify({at:new Date().toISOString(),...JSON.parse(healthDetail(value))}));
   const status=value.status==='observations_fresh'?'ok':['sip_subscribed','bounded_replay_complete','coverage_unknown_or_stale'].includes(value.status)?'blocked':'failed';
-  const r=await fetch(`${url}/rest/v1/morrow_integration_health`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,'content-type':'application/json',prefer:'return=minimal'},body:JSON.stringify({dataset:'alpaca_sip',checked_at:new Date().toISOString(),status,detail:JSON.stringify({status:value.status,symbol_count:value.symbol_count||null,event_at:value.last_event_at||null,persisted_at:value.last_persisted_at||null,session:value.session||'unknown'}).slice(0,200),coverage:value.stale_symbols?.length?('stale_symbols:'+value.stale_symbols.join(',')).slice(0,200):value.backfill_complete===true?'bounded_replay_complete_earlier_unknown':'gap_or_unknown'})});
+  const r=await fetch(`${url}/rest/v1/morrow_integration_health`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,'content-type':'application/json',prefer:'return=minimal'},body:JSON.stringify({dataset:'alpaca_sip',checked_at:new Date().toISOString(),status,detail:healthDetail(value),coverage:value.stale_symbols?.length?('stale_symbols:'+value.stale_symbols.join(',')).slice(0,200):value.backfill_complete===true?'bounded_replay_complete_earlier_unknown':'gap_or_unknown'})});
   if(!r.ok)throw Error('health persistence failed');
  };
- try{await supervise({beforeAttempt:()=>budget.reserve(),signal:abort.signal,onHeartbeat:health=>onHealth(health||{status:'coverage_unknown_or_stale'}),refreshSymbols:loadSymbols,connect:async()=>connectSip({symbols:await loadSymbols(),keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY,licensed:true,store,calendar,onHealth})});}
+ try{await supervise({beforeAttempt:()=>budget.reserve(),signal:abort.signal,onFailure:onHealth,onHeartbeat:health=>onHealth(health||{status:'coverage_unknown_or_stale'}),refreshSymbols:loadSymbols,connect:async()=>connectSip({symbols:await loadSymbols(),keyId:env.ALPACA_API_KEY_ID,secret:env.ALPACA_API_SECRET_KEY,licensed:true,store,calendar,onHealth})});}
  catch(error){await onHealth({status:'stream_stopped_operator_review_required'}).catch(()=>{});throw error;}
 }
 if(import.meta.url===new URL(process.argv[1]||'', 'file://').href)main().catch(async()=>{const parked=process.env.MORROW_PARK_ON_FAILURE==='true'?parkUntilStopped():null;console.error('Morrow SIP worker stopped; inspect readiness and server configuration.');if(parked)await parked;else process.exitCode=1;});

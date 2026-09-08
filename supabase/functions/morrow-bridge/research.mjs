@@ -64,7 +64,7 @@ export function researchSummary(records,{truncated=false}={}){
  const counts={};for(const row of records)counts[row.kind]=(counts[row.kind]||0)+1;
  const last=records.find(r=>r.kind==='run');
  return {mode:'exploratory',records_in_page:counts,truncated,champion:null,evaluation_started_at:null,
-  new_openings_allowed:false,providers:{alpaca:'pending_entitlement',tiingo:'pending_entitlement'},
+  new_openings_allowed:false,providers:{alpaca:'verify_current_data_evidence',tiingo:'verify_current_data_evidence'},
   last_run_in_page:last?{id:last.id,recorded_at:last.created_at,...last.payload,route_verification:'reported_only_not_runtime_attested'}:null,
   roi_status:'requires_verified_exposure_matched_outcomes',sync:'server_records'};
 }

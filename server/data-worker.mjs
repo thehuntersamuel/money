@@ -15,6 +15,7 @@ export async function ingestOnce(input,{config,db,fetchImpl=fetch,now=()=>new Da
    const result=await fetchSource(input,{config,fetchImpl,now});
    if(result.blocked){health.detail=result.blocked;return health;}
    ({payload,provider,displayAllowed,provenance}=result);health.coverage=result.coverage;
+   if(result.quality)provenance={...provenance,quality:result.quality};
   }else if(dataset==='alpaca_sip'){
    if(!config.alpacaKey||!config.alpacaSecret||config.alpacaLicensed!==true||config.alpacaArchiveApproved!==true){health.detail='keys_license_or_archive_missing';return health;}
    provider='alpaca';displayAllowed=config.alpacaDisplayAllowed===true;

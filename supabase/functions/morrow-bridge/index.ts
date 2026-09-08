@@ -68,7 +68,7 @@ Deno.serve(async (request) => {
           else result={status:'ok',...result};
         }else {discoveryGateway ||= makeDiscovery({config});result=await discoveryGateway(body);}
         return reply(200,{ok:true,operation,result,mutation_calls:0});
-      }catch{return reply(503,{error:'research provider unavailable or request invalid; no credentials or upstream bodies returned'});}
+      }catch(error){const message=error instanceof Error?error.message:'';const category=/^provider_http_[0-9]{3}$/.test(message)||message==='provider_network_failure'?message:'request_or_payload_invalid';return reply(503,{error:'research unavailable',category,mutation_calls:0});}
     }
 
     const { data: books, error: bookError } = await db.from('v_paper_books').select('*').eq('label', 'Robinhood Savings').limit(1);
