@@ -1,12 +1,13 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import {ingestOnce} from '../../../server/data-worker.mjs';
+import {authorizeIngestion} from './service-auth.mjs';
 // Service-only ingest. Morrow research jobs and browser users cannot invoke it.
 Deno.serve(async request=>{
  const headers={'content-type':'application/json','cache-control':'no-store'};
  const reply=(status,value)=>new Response(JSON.stringify(value),{status,headers});
  const secret=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
  if(request.method!=='POST')return reply(405,{error:'POST required'});
- if(!secret||request.headers.get('authorization')!==`Bearer ${secret}`)return reply(401,{error:'unauthorized'});
+ if(!await authorizeIngestion(request.headers.get('authorization'),secret))return reply(401,{error:'unauthorized'});
  if(Deno.env.get('MORROW_INGEST_ENABLED')!=='true')return reply(200,{ok:true,status:'disabled',reason:'operator readiness activation pending'});
  try{
   const text=await request.text();if(text.length>4096)return reply(413,{error:'request too large'});
