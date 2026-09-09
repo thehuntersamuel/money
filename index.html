@@ -3613,6 +3613,26 @@ function renderMorrowSummary(book){
  $('morrow-data').innerHTML='<div class="hub-feeds">'+[['alpaca_sip','Alpaca · consolidated prices'],['tiingo_eod','Tiingo · daily history'],['tiingo_news','Tiingo · news']].map(function(pair){var state=providerPresentation(D.integrationHealth,pair[0],Date.now());return '<section class="card hub-feed"><h3>'+esc(pair[1])+'</h3><strong>'+esc(state.title)+'</strong><p>'+esc(state.note)+'</p>'+(state.at?'<time>'+esc(state.at)+'</time>':'')+'</section>';}).join('')+'</div>';
  var recent=proposals.slice().sort(function(a,b){return (Date.parse(b.updated_at)||0)-(Date.parse(a.updated_at)||0);}).slice(0,6);
  $('morrow-timeline').innerHTML=recent.length?'<ul class="hub-decisions">'+recent.map(function(p){return '<li><strong>'+esc(p.symbol)+' · '+esc(decisionLabel(p.state))+'</strong><p>'+esc(p.rejection_reason||p.thesis||'No explanation recorded.')+'</p><time>Saved '+esc(ago(p.updated_at))+'</time></li>';}).join('')+'</ul><p class="small muted">Latest saved state for each idea, not a complete event history. Expand the research below for sources, risks, and conditions.</p>':'<p class="muted">No saved decisions for this book yet.</p>';
+ var decisions=(research.rows||[]).filter(function(r){return r.book_id===book.book_id&&r.kind==='decision';});
+ var seen=new Set();decisions=decisions.slice().sort(function(a,b){return Date.parse(b.created_at)-Date.parse(a.created_at);}).filter(function(r){var key=r.payload?.proposal_key||r.id;if(seen.has(key))return false;seen.add(key);return true;});
+ var researchHtml='<h3>Research notes</h3><p class="small muted">Watch and pass decisions can be saved before an entry price or trading plan exists. These notes do not authorize a trade.</p>';
+ if(!research.available)researchHtml+='<p>Research notes could not be loaded. Refresh to try again.</p>';
+ else if(!decisions.length)researchHtml+='<p class="muted">No research notes in the loaded history.</p>';
+ else researchHtml+=decisions.slice(0,10).map(function(r){return researchDecisionHTML(r,research.rows||[]);}).join('');
+ if(research.truncated||decisions.length>10)researchHtml+='<p class="small muted">Showing recent research only; older records may not be included.</p>';
+ $('morrow-timeline').innerHTML=researchHtml+$('morrow-timeline').innerHTML;
+}
+function researchDecisionHTML(record,records){
+ var p=record.payload||{};
+ var label=({watch:'Watching · research only',rejected:'Passed on',research_qualified:'Research reviewed · not purchased',shadow:'Shadow research · not purchased'})[p.disposition]||'Status unknown';
+ function paragraph(title,value){return value?'<h4>'+esc(title)+'</h4><p>'+esc(String(value))+'</p>':'';}
+ function bullets(title,values){return Array.isArray(values)&&values.length?'<h4>'+esc(title)+'</h4><ul>'+values.map(function(v){return '<li>'+esc(String(v))+'</li>';}).join('')+'</ul>':'';}
+ var sources=(p.source_ids||[]).map(function(id){var r=records.find(function(s){return s.id===id&&s.kind==='source'&&s.book_id===record.book_id;});
+  if(!r)return '<li>Linked source is outside the loaded history.</li>';
+  var s=r.payload||{},link='';try{var u=new URL(s.url);if(u.protocol==='https:'&&!u.username&&!u.password)link=u.href;}catch(e){}
+  return '<li>'+(link?'<a href="'+esc(link)+'" target="_blank" rel="noopener noreferrer">'+esc(s.title||'Source')+'</a>':esc(s.title||'Source unavailable'))+'<p class="small muted">Retrieved '+esc(s.retrieved_at||'unknown')+(s.released_at?' · Published '+esc(s.released_at):' · Exact publication time unavailable')+'</p>'+paragraph('Source context',s.retention_note)+'</li>';
+ }).join('');
+ return '<details class="morrow-panel" style="margin-bottom:12px;overflow-wrap:anywhere"><summary>'+esc(p.symbol||'Unknown symbol')+' · '+esc(label)+'</summary>'+paragraph('Why this is being watched',p.thesis)+paragraph('What could go wrong',p.bear_case)+paragraph('What happens next',p.catalyst)+paragraph('Review time',p.review_at)+paragraph('Comparison and horizon',(p.benchmark||'Unknown')+' · '+(p.horizon||'Unknown'))+bullets('Assumptions and risk limits',p.assumptions)+bullets('Still missing',p.missing_data)+(sources?'<h4>Sources</h4><ul>'+sources+'</ul>':'<p>No sources linked.</p>')+'<p class="small muted">Saved '+esc(record.created_at||'unknown')+' · Record '+esc(record.id)+'</p></details>';
 }
 function updateThemeLabel(){var light=document.documentElement.dataset.theme==='light';$('theme-toggle').textContent=light?'Dark mode':'Light mode';$('theme-toggle').setAttribute('aria-label','Switch to '+(light?'dark':'light')+' mode');}
 updateThemeLabel();
