@@ -3601,8 +3601,11 @@ function providerPresentation(health, dataset, now){
     if(lastEvent&&Number.isFinite(new Date(lastEvent).getTime()))note+=' Last saved market event: '+new Date(lastEvent).toLocaleString()+'.';
     return {title:'Price feed stopped',note:note,at:row.checked_at};
   }
-  if(!Number.isFinite(age)||age<0||age>600000)return {title:'Receipt needs refresh',note:'The last report is too old to establish current feed health.',at:row.checked_at};
-  return {title:row.status==='ok'?'Feed reporting healthy':row.status==='failed'?'Feed needs attention':'Awaiting verified coverage',note:row.coverage||'Coverage has not been reported.',at:row.checked_at};
+  if(!Number.isFinite(age)||age<0)return {title:'Receipt needs refresh',note:'The report time could not be verified.',at:row.checked_at};
+  if(row.status==='ok'&&dataset==='tiingo_eod')return {title:'Daily history saved',note:'A limited daily-price history is available for research. Check its date range; it is not a live trading quote.',at:row.checked_at};
+  if(row.status==='ok'&&dataset==='tiingo_news')return {title:'News sample saved',note:/partial|limit/.test(row.coverage||'')?'This sample has incomplete coverage. Some stories may be excluded or outside its size limit; claims still need source checks.':'A news sample is available for research. Check story dates and verify material claims with original sources.',at:row.checked_at};
+  if(age>600000)return {title:'Receipt needs refresh',note:'The last report is too old to establish current feed health.',at:row.checked_at};
+  return {title:row.status==='ok'?'Feed reporting healthy':row.status==='failed'?'Feed needs attention':'Awaiting verified coverage',note:row.status==='failed'?'The latest data check failed and needs investigation.':row.status==='ok'?'The latest worker report passed its freshness checks.':/^stale_symbols:/.test(row.coverage||'')?'Waiting for fresh consolidated prices. Saved prices are not current enough for entry decisions.':'Coverage is not yet verified for entry decisions.',at:row.checked_at};
 }
 function renderMorrowSummary(book){
  var proposals=(D.proposals||[]).filter(function(p){return p.book_id===book.book_id;});
