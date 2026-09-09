@@ -602,7 +602,7 @@ details.proposal-card .proposal-grid { padding-top:16px; }
 @media(max-width:360px) { .brand-word { display:none; }.shell { padding:10px; } }
 </style>
 </head>
-<body><div style="padding:8px;text-align:center;font-size:13px">SYNTHETIC PREVIEW · Backend disabled · 80dfc75f4ee9</div>
+<body><div style="padding:8px;text-align:center;font-size:13px">SYNTHETIC PREVIEW · Backend disabled · 9a1f151ed4ad</div>
 <div class="shell">
 
   <header class="topbar">
@@ -3586,10 +3586,22 @@ function decisionLabel(state){return ({watch:'Watching',rejected:'Passed on',qua
 function providerPresentation(health, dataset, now){
   if(!health||!health.available)return {title:'Status unavailable',note:'The Hub could not load provider health. Connection and freshness are unverified.'};
   var row=(health.rows||[]).find(function(r){return r.dataset===dataset;});
-  if(!row)return {title:'Awaiting ingestion receipt',note:'No saved feed receipt is available. A working API key alone does not confirm scheduled delivery.'};
+  if(!row)return {title:'Awaiting ingestion receipt',note:'No ingestion has been recorded. On-demand research queries are separate; this does not establish whether those queries work.'};
   var age=now-Date.parse(row.checked_at);
-  if(!Number.isFinite(age)||age<0||age>600000)return {title:'Receipt needs refresh',note:'The last report is too old to establish current feed health.',at:row.checked_at};
-  return {title:row.status==='ok'?'Feed reporting healthy':row.status==='failed'?'Feed needs attention':'Awaiting verified coverage',note:row.coverage||'Coverage has not been reported.',at:row.checked_at};
+  var detail={};try{detail=JSON.parse(row.detail||'{}');}catch(e){}
+  var reason=detail.r||detail.reason,code=detail.s||detail.status;
+  var lastEvent=detail.e||detail.event_at;
+  if(row.status==='failed'&&code){
+    var labels={stream_backpressure_gap:'The worker could not keep up with incoming data.',stream_stale_coverage_gap:'The stream missed confirmed market events.',stream_stopped_operator_review_required:'The worker stopped and needs recovery.'};
+    var note=labels[reason]||labels[code]||'The data worker reported a failure. Technical review is required.';
+    if(lastEvent&&Number.isFinite(new Date(lastEvent).getTime()))note+=' Last saved market event: '+new Date(lastEvent).toLocaleString()+'.';
+    return {title:'Price feed stopped',note:note,at:row.checked_at};
+  }
+  if(!Number.isFinite(age)||age<0)return {title:'Receipt needs refresh',note:'The report time could not be verified.',at:row.checked_at};
+  if(row.status==='ok'&&dataset==='tiingo_eod')return {title:'Daily history saved',note:'A limited daily-price history is available for research. Check its date range; it is not a live trading quote.',at:row.checked_at};
+  if(row.status==='ok'&&dataset==='tiingo_news')return {title:'News sample saved',note:/partial|limit/.test(row.coverage||'')?'This sample has incomplete coverage. Some stories may be excluded or outside its size limit; claims still need source checks.':'A news sample is available for research. Check story dates and verify material claims with original sources.',at:row.checked_at};
+  if(age>600000)return {title:'Receipt needs refresh',note:'The last report is too old to establish current feed health.',at:row.checked_at};
+  return {title:row.status==='ok'?'Feed reporting healthy':row.status==='failed'?'Feed needs attention':'Awaiting verified coverage',note:row.status==='failed'?'The latest data check failed and needs investigation.':row.status==='ok'?'The latest worker report passed its freshness checks.':/^stale_symbols:/.test(row.coverage||'')?'Waiting for fresh consolidated prices. Saved prices are not current enough for entry decisions.':'Coverage is not yet verified for entry decisions.',at:row.checked_at};
 }
 function renderMorrowSummary(book){
  var proposals=(D.proposals||[]).filter(function(p){return p.book_id===book.book_id;});
@@ -3600,6 +3612,26 @@ function renderMorrowSummary(book){
  $('morrow-data').innerHTML='<div class="hub-feeds">'+[['alpaca_sip','Alpaca · consolidated prices'],['tiingo_eod','Tiingo · daily history'],['tiingo_news','Tiingo · news']].map(function(pair){var state=providerPresentation(D.integrationHealth,pair[0],Date.now());return '<section class="card hub-feed"><h3>'+esc(pair[1])+'</h3><strong>'+esc(state.title)+'</strong><p>'+esc(state.note)+'</p>'+(state.at?'<time>'+esc(state.at)+'</time>':'')+'</section>';}).join('')+'</div>';
  var recent=proposals.slice().sort(function(a,b){return (Date.parse(b.updated_at)||0)-(Date.parse(a.updated_at)||0);}).slice(0,6);
  $('morrow-timeline').innerHTML=recent.length?'<ul class="hub-decisions">'+recent.map(function(p){return '<li><strong>'+esc(p.symbol)+' · '+esc(decisionLabel(p.state))+'</strong><p>'+esc(p.rejection_reason||p.thesis||'No explanation recorded.')+'</p><time>Saved '+esc(ago(p.updated_at))+'</time></li>';}).join('')+'</ul><p class="small muted">Latest saved state for each idea, not a complete event history. Expand the research below for sources, risks, and conditions.</p>':'<p class="muted">No saved decisions for this book yet.</p>';
+ var decisions=(research.rows||[]).filter(function(r){return r.book_id===book.book_id&&r.kind==='decision';});
+ var seen=new Set();decisions=decisions.slice().sort(function(a,b){return Date.parse(b.created_at)-Date.parse(a.created_at);}).filter(function(r){var key=r.payload?.proposal_key||r.id;if(seen.has(key))return false;seen.add(key);return true;});
+ var researchHtml='<h3>Research notes</h3><p class="small muted">Watch and pass decisions can be saved before an entry price or trading plan exists. These notes do not authorize a trade.</p>';
+ if(!research.available)researchHtml+='<p>Research notes could not be loaded. Refresh to try again.</p>';
+ else if(!decisions.length)researchHtml+='<p class="muted">No research notes in the loaded history.</p>';
+ else researchHtml+=decisions.slice(0,10).map(function(r){return researchDecisionHTML(r,research.rows||[]);}).join('');
+ if(research.truncated||decisions.length>10)researchHtml+='<p class="small muted">Showing recent research only; older records may not be included.</p>';
+ $('morrow-timeline').innerHTML=researchHtml+$('morrow-timeline').innerHTML;
+}
+function researchDecisionHTML(record,records){
+ var p=record.payload||{};
+ var label=({watch:'Watching · research only',rejected:'Passed on',research_qualified:'Research reviewed · not purchased',shadow:'Shadow research · not purchased'})[p.disposition]||'Status unknown';
+ function paragraph(title,value){return value?'<h4>'+esc(title)+'</h4><p>'+esc(String(value))+'</p>':'';}
+ function bullets(title,values){return Array.isArray(values)&&values.length?'<h4>'+esc(title)+'</h4><ul>'+values.map(function(v){return '<li>'+esc(String(v))+'</li>';}).join('')+'</ul>':'';}
+ var sources=(p.source_ids||[]).map(function(id){var r=records.find(function(s){return s.id===id&&s.kind==='source'&&s.book_id===record.book_id;});
+  if(!r)return '<li>Linked source is outside the loaded history.</li>';
+  var s=r.payload||{},link='';try{var u=new URL(s.url);if(u.protocol==='https:'&&!u.username&&!u.password)link=u.href;}catch(e){}
+  return '<li>'+(link?'<a href="'+esc(link)+'" target="_blank" rel="noopener noreferrer">'+esc(s.title||'Source')+'</a>':esc(s.title||'Source unavailable'))+'<p class="small muted">Retrieved '+esc(s.retrieved_at||'unknown')+(s.released_at?' · Published '+esc(s.released_at):' · Exact publication time unavailable')+'</p>'+paragraph('Source context',s.retention_note)+'</li>';
+ }).join('');
+ return '<details class="morrow-panel" style="margin-bottom:12px;overflow-wrap:anywhere"><summary>'+esc(p.symbol||'Unknown symbol')+' · '+esc(label)+'</summary>'+paragraph('Why this is being watched',p.thesis)+paragraph('What could go wrong',p.bear_case)+paragraph('What happens next',p.catalyst)+paragraph('Review time',p.review_at)+paragraph('Comparison and horizon',(p.benchmark||'Unknown')+' · '+(p.horizon||'Unknown'))+bullets('Assumptions and risk limits',p.assumptions)+bullets('Still missing',p.missing_data)+(sources?'<h4>Sources</h4><ul>'+sources+'</ul>':'<p>No sources linked.</p>')+'<p class="small muted">Saved '+esc(record.created_at||'unknown')+' · Record '+esc(record.id)+'</p></details>';
 }
 function updateThemeLabel(){var light=document.documentElement.dataset.theme==='light';$('theme-toggle').textContent=light?'Dark mode':'Light mode';$('theme-toggle').setAttribute('aria-label','Switch to '+(light?'dark':'light')+' mode');}
 updateThemeLabel();
@@ -3608,7 +3640,7 @@ $('theme-toggle').onclick=function(){var next=document.documentElement.dataset.t
 function labelMobileTables(root){root.querySelectorAll('table').forEach(function(table){if(table.closest('#tx-body')||table.closest('[data-pane="connect"]')){table.classList.add('hub-stack');var headers=Array.from(table.querySelectorAll('thead th')).map(function(h){return h.textContent;});table.querySelectorAll('tbody tr').forEach(function(row){Array.from(row.cells).forEach(function(cell,i){cell.dataset.label=headers[i]||'Actions';cell.querySelectorAll('select').forEach(function(select){select.setAttribute('aria-label',(headers[i]||'Setting')+' for '+(row.cells[1]?.textContent||'row'));});});});}});}
 new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){if(n.nodeType===1)labelMobileTables(n.parentElement||n);});});}).observe($('app'),{childList:true,subtree:true});
 
-D={"books": [{"book_id": "TEST-BOOK", "label": "Robinhood Savings", "equity": 10000, "stake": 10000, "buying_power": 10000, "cash": 10000, "securities": 0, "realized_pnl": 0, "unrealized_pnl": 0, "n_open": 0, "n_closed": 0, "account_name": "Synthetic account", "mask": "TEST"}], "book": "TEST-BOOK", "proposals": [{"id": "TEST-PROPOSAL", "book_id": "TEST-BOOK", "symbol": "TEST", "state": "watch", "decision": "wait_for_trigger", "setup": "swing", "horizon": "short", "confidence": 50, "thesis": "Synthetic example: demand improves while margins remain stable.", "catalyst": "Upcoming issuer update; date awaits primary-source confirmation.", "bear_case": "Demand could weaken and invalidate the growth assumptions.", "invalidation": "The next issuer update contradicts the demand thesis.", "entry_condition": "A fresh full review is required after the trigger.", "trigger_direction": "above", "trigger_price": 101, "entry_price": 101, "target_price": 110, "stop_price": 97, "source_freshness": "unknown", "news_checked_at": "2026-09-04T14:00:00Z", "evidence": []}], "trades": [], "quotes": [], "watchlist": [], "session": [], "mode": "personal", "entities": [], "proposalQueueStatus": {"complete": true}, "research": {"available": true, "rows": [], "truncated": false}, "integrationHealth": {"available": true, "rows": []}};
+D={"books": [{"book_id": "TEST-BOOK", "label": "Robinhood Savings", "equity": 10000, "stake": 10000, "buying_power": 10000, "cash": 10000, "securities": 0, "realized_pnl": 0, "unrealized_pnl": 0, "n_open": 0, "n_closed": 0, "account_name": "Synthetic account", "mask": "TEST"}], "book": "TEST-BOOK", "proposals": [{"id": "TEST-PROPOSAL", "book_id": "TEST-BOOK", "symbol": "TEST", "state": "watch", "decision": "wait_for_trigger", "setup": "swing", "horizon": "short", "confidence": 50, "thesis": "Synthetic example: demand improves while margins remain stable.", "catalyst": "Upcoming issuer update; date awaits primary-source confirmation.", "bear_case": "Demand could weaken and invalidate the growth assumptions.", "invalidation": "The next issuer update contradicts the demand thesis.", "entry_condition": "A fresh full review is required after the trigger.", "trigger_direction": "above", "trigger_price": 101, "entry_price": 101, "target_price": 110, "stop_price": 97, "source_freshness": "unknown", "news_checked_at": "2026-09-04T14:00:00Z", "evidence": []}], "trades": [], "quotes": [], "watchlist": [], "session": [], "mode": "personal", "entities": [], "proposalQueueStatus": {"complete": true}, "research": {"available": true, "rows": [{"id": "TEST-SOURCE", "book_id": "TEST-BOOK", "kind": "source", "created_at": "2026-09-09T01:00:00Z", "payload": {"url": "https://example.com/research", "title": "Synthetic issuer source", "retrieved_at": "2026-09-09T01:00:00Z", "retention_note": "Synthetic layout fixture, not investment evidence."}}, {"id": "TEST-DECISION", "book_id": "TEST-BOOK", "kind": "decision", "created_at": "2026-09-09T02:00:00Z", "payload": {"proposal_key": "TEST-WATCH", "symbol": "TEST", "disposition": "watch", "horizon": "swing", "benchmark": "TEST-BENCHMARK", "thesis": "Synthetic research note. Wait for verified results before considering an entry.", "bear_case": "The hypothesis may fail and prices may gap.", "catalyst": "Review an example results release.", "review_at": "2026-09-10T14:00:00Z", "source_ids": ["TEST-SOURCE"], "assumptions": ["No prices, position size or trade have been approved."], "missing_data": ["Fresh execution-grade prices and verified results."]}}], "truncated": false}, "integrationHealth": {"available": true, "rows": []}};
 $("login").style.display="none";$("app").style.display="";$("nav").style.display="";$("signout").style.display="none";showTab("trade");wireDrawer();renderTrade();
 ["proposal-search","proposal-state"].forEach(id=>$(id).addEventListener("input",()=>renderProposals(D.books.find(b=>b.book_id===D.book))));
 

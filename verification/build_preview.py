@@ -12,7 +12,10 @@ var sb=new Proxy({}, {get(){throw new Error('Synthetic preview: backend disabled
 '''+html[b:]
 fixture=json.loads((root/'tests/fixtures/ui_preview.json').read_text())
 fixture['proposalQueueStatus']={'complete':True}
-fixture['research']={'available':True,'rows':[],'truncated':False}
+fixture['research']={'available':True,'rows':[
+ {'id':'TEST-SOURCE','book_id':'TEST-BOOK','kind':'source','created_at':'2026-09-09T01:00:00Z','payload':{'url':'https://example.com/research','title':'Synthetic issuer source','retrieved_at':'2026-09-09T01:00:00Z','retention_note':'Synthetic layout fixture, not investment evidence.'}},
+ {'id':'TEST-DECISION','book_id':'TEST-BOOK','kind':'decision','created_at':'2026-09-09T02:00:00Z','payload':{'proposal_key':'TEST-WATCH','symbol':'TEST','disposition':'watch','horizon':'swing','benchmark':'TEST-BENCHMARK','thesis':'Synthetic research note. Wait for verified results before considering an entry.','bear_case':'The hypothesis may fail and prices may gap.','catalyst':'Review an example results release.','review_at':'2026-09-10T14:00:00Z','source_ids':['TEST-SOURCE'],'assumptions':['No prices, position size or trade have been approved.'],'missing_data':['Fresh execution-grade prices and verified results.']}}
+],'truncated':False}
 fixture['integrationHealth']={'available':True,'rows':[]}
 setup='D='+json.dumps(fixture)+';\n'+'''$("login").style.display="none";$("app").style.display="";$("nav").style.display="";$("signout").style.display="none";showTab("trade");wireDrawer();renderTrade();
 ["proposal-search","proposal-state"].forEach(id=>$(id).addEventListener("input",()=>renderProposals(D.books.find(b=>b.book_id===D.book))));
