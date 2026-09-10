@@ -3,7 +3,7 @@ export function streamUniverse(values){
  if(!Array.isArray(values)||!values.length||values.some(s=>typeof s!=='string'||!/^[A-Z][A-Z0-9.-]{0,9}$/.test(s)))throw Error('invalid stream symbols');
  const symbols=[...new Set(values)].sort();if(symbols.length>500)throw Error('stream capacity exceeded; no symbols silently omitted');return symbols;
 }
-export function subscriptionLoader({url,serviceRole,seed=['SPY','QQQ'],fetchImpl=fetch,resolveSymbols=async symbols=>symbols}){
+export function subscriptionLoader({url,serviceRole,seed=['SPY','QQQ'],fetchImpl=fetch,resolveSymbols=async symbols=>symbols,tiered=false}){
  if(url!=='https://fglbxoafbebsryjeqcbu.supabase.co'||!serviceRole)throw Error('approved symbol store required');
  async function rows(table,query){
   const result=[];
@@ -13,7 +13,17 @@ export function subscriptionLoader({url,serviceRole,seed=['SPY','QQQ'],fetchImpl
    if(!r.ok)throw Error('stream universe read failed');const page=await r.json();if(!Array.isArray(page)||page.length>500)throw Error('invalid universe response');result.push(...page);if(page.length<500)return result;
   }throw Error('stream source exceeds capacity; coverage unavailable');
  }
- return async()=>{const results=await Promise.all([rows('watchlist',{}),rows('trade_proposals',{state:'in.(watch,qualified,opened)'}),rows('trades',{status:'eq.open',is_real:'eq.false'})]);return resolveSymbols(streamUniverse([...seed,...results.flat().map(r=>r.symbol)]),results[2].map(r=>r.symbol));};
+ return async()=>{
+  const results=await Promise.all([rows('watchlist',{}),rows('trade_proposals',{state:'in.(watch,qualified,opened)'}),rows('trades',{status:'eq.open',is_real:'eq.false'})]);
+  const required=[...new Set([...seed,...results[1].map(r=>r.symbol),...results[2].map(r=>r.symbol)])];
+  const all=await resolveSymbols(streamUniverse([...seed,...results.flat().map(r=>r.symbol)]),tiered?required:results[2].map(r=>r.symbol));
+  if(!tiered)return all;
+  if(required.some(s=>!all.includes(s)))throw Error('required trigger symbol lacks SIP coverage');
+  const symbols=streamUniverse(required);
+  // Capacity guard, not a ranking rule: never silently drop a proposal/position.
+  if(symbols.length>30)throw Error('active raw stream capacity exceeded; operator review required');
+  return {symbols,barSymbols:all.filter(s=>!symbols.includes(s))};
+ };
 }
 
 export function alpacaAssetResolver({keyId,secret,fetchImpl=fetch,clock=()=>Date.now(),onExcluded=async()=>{}}){
