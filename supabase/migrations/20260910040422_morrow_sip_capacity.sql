@@ -1,3 +1,4 @@
+-- Applied migration ledger version: 20260910040422.
 -- Additive recovery: immutable research summaries are NOT crossing authority.
 create table public.morrow_research_minute_bars (
  id uuid primary key default gen_random_uuid(),
