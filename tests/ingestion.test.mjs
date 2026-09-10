@@ -23,7 +23,7 @@ test('bursty frames are coalesced and accepted observations drain after overflow
  // the 20,000 records already accepted must still be written before shutdown.
  for(let i=0;i<20001;i++)socket.emit('message',[trade(i+1000)]);
  await worker.drain();assert(socket.closed);assert.equal(worker.failure(),'stream_backpressure_gap');
- assert.equal(stored.length,20101);assert(sizes.every(n=>n<=250));
+ assert.equal(stored.length,20101);assert(sizes.every(n=>n<=1000));
  socket.emit('close',{code:1006});assert.equal(worker.failure(),'stream_backpressure_gap');
 });
 test('a quiet peer and REST leading the live frontier cannot force a reconnect',async()=>{

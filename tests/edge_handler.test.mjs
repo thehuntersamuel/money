@@ -55,6 +55,12 @@ test('continuous SIP observations are readable without a snapshot',async()=>{
  assert.equal(response.status,200);assert.equal(body.snapshot,null);assert.equal(body.observations.length,1);
  assert.equal(body.status,'observations_available_check_timestamp');
 });
+test('research bars are separate, explicitly non-executable and available without raw ticks',async()=>{
+ const h=harness({approved:true,rows:{morrow_research_minute_bars:[{source_id:'TEST-bar',symbol:'AAPL',kind:'u',event_at:'2026-09-09T13:30:00Z'}]}});
+ const response=await h.call('data_read',{payload:{dataset:'alpaca_sip',symbols:['AAPL']}}),body=await response.json();
+ assert.equal(response.status,200);assert.equal(body.observations.length,0);assert.equal(body.bars.length,1);
+ assert.equal(body.bar_use,'research_only_not_trigger_or_fill_authority');assert.equal(body.bar_history_coverage,'unknown');assert.equal(h.counts().mutations,0);
+});
 test('active proposal overflow fails explicitly instead of returning partial coverage',async()=>{
  const h=harness({rows:{trade_proposals:Array.from({length:501},(_,i)=>({id:String(i)}))}});
  assert.notEqual((await h.call('state')).status,200);

@@ -38,17 +38,22 @@ export function makeMarketData({keyId,secret,licensed=false,fetchImpl=fetch,slee
   }
   return {
     latestQuotes: symbols=>request('/v2/stocks/quotes/latest',{symbols:universe(symbols).join(',')}),
-    async backfillTrades(symbols,start,end,{maxPages=20}={}) {
+    async backfillTrades(symbols,start,end,{maxPages=20,onPage=null,pageSize=10000}={}) {
       time(start);time(end);universe(symbols);
-      if(Date.parse(end)<=Date.parse(start)||Date.parse(end)-Date.parse(start)>3600000||maxPages<1||maxPages>20) throw new Error('bounded backfill interval required');
+      if(Date.parse(end)<=Date.parse(start)||Date.parse(end)-Date.parse(start)>3600000||!Number.isInteger(maxPages)||maxPages<1||maxPages>20||!Number.isInteger(pageSize)||pageSize<1||pageSize>10000) throw new Error('bounded backfill interval required');
       const records=[];let page_token;const seen=new Set();
       for(let i=0;i<maxPages;i++) {
-        const body=await request('/v2/stocks/trades',{symbols:symbols.join(','),start,end,sort:'asc',limit:10000,page_token});
+        const body=await request('/v2/stocks/trades',{symbols:symbols.join(','),start,end,sort:'asc',limit:pageSize,page_token});
         if(!body.trades||typeof body.trades!=='object') throw new Error('malformed backfill response');
+        const page=[];
         for(const [symbol,rows] of Object.entries(body.trades)) {
           if(!symbols.includes(symbol)||!Array.isArray(rows)) throw new Error('unexpected backfill symbol/data');
-          records.push(...rows.map(row=>({symbol,row})));
+          if(page.length+rows.length>pageSize)throw new Error('oversized backfill response');
+          for(const row of rows)page.push({symbol,row});
         }
+        // Production ingestion awaits each page's durable write before fetching
+        // the next. Legacy bounded research callers may explicitly collect.
+        if(onPage)await onPage(page);else records.push(...page);
         if(!body.next_page_token) return {records,coverage_complete:true,start,end};
         if(seen.has(body.next_page_token)) throw new Error('repeated backfill cursor; coverage unknown');
         seen.add(body.next_page_token);page_token=body.next_page_token;

@@ -121,15 +121,18 @@ Deno.serve(async (request) => {
       if(providerPrefix&&(Deno.env.get(providerPrefix+'_LICENSE_APPROVED')!=='true'||Deno.env.get(providerPrefix+'_DISPLAY_APPROVED')!=='true'||Deno.env.get(providerPrefix+'_ARCHIVE_APPROVED')!=='true'||(dataset==='tiingo_news'&&Deno.env.get('TIINGO_NEWS_APPROVED')!=='true')))return reply(200,{ok:true,operation,dataset,snapshot:null,observations:[],status:'data_unavailable',reason:'current_provider_use_not_approved',mutation_calls:0});
       const {data,error}=await db.from('morrow_data_snapshots').select('id,provider,dataset,received_at,display_allowed,payload,provenance').eq('dataset',dataset).eq('display_allowed',true).order('received_at',{ascending:false}).limit(1);
       if(error)return reply(503,{error:'data projection unavailable'});
-      let observations=[];
+      let observations=[],bars=[];
       if(dataset==='alpaca_sip'){
         const symbols=body.symbols;
         if(symbols!=null&&(!Array.isArray(symbols)||symbols.length>30||symbols.some(s=>typeof s!=='string'||!/^[A-Z][A-Z0-9.-]{0,9}$/.test(s))))return reply(400,{error:'invalid bounded symbols'});
-        let q=db.from('morrow_market_observations').select('source_id,symbol,provider,feed,event_at,received_at,session,bid,ask,last,gap,is_test').eq('is_test',false).order('event_at',{ascending:false}).limit(100);
+        let q=db.from('morrow_market_observations').select('source_id,symbol,provider,feed,event_at,received_at,persisted_at,session,bid,ask,last,gap,is_test').eq('is_test',false).order('event_at',{ascending:false}).limit(100);
         if(symbols?.length)q=q.in('symbol',symbols);
         const observed=await q;if(observed.error)return reply(503,{error:'observation projection unavailable'});observations=observed.data||[];
+        let barQuery=db.from('morrow_research_minute_bars').select('source_id,symbol,provider,feed,event_at,received_at,persisted_at,kind,session,open,high,low,close,volume,is_test').eq('is_test',false).order('event_at',{ascending:false}).order('received_at',{ascending:false}).limit(100);
+        if(symbols?.length)barQuery=barQuery.in('symbol',symbols);
+        const barResult=await barQuery;if(barResult.error)return reply(503,{error:'research bar projection unavailable'});bars=barResult.data||[];
       }
-      return reply(200,{ok:true,operation,dataset,snapshot:data?.[0]||null,observations,observation_limit:100,status:observations.length?'observations_available_check_timestamp':data?.length?'snapshot_available_check_timestamp':'data_unavailable',mutation_calls:0});
+      return reply(200,{ok:true,operation,dataset,snapshot:data?.[0]||null,observations,bars,bar_use:'research_only_not_trigger_or_fill_authority',bar_history_coverage:'unknown',observation_limit:100,bar_limit:100,status:observations.length?'observations_available_check_timestamp':bars.length?'research_bars_available_check_timestamp':data?.length?'snapshot_available_check_timestamp':'data_unavailable',mutation_calls:0});
     }
     if (operation === 'research_state') {
       const limit = 100;
