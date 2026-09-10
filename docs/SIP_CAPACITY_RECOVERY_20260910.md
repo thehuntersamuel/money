@@ -117,6 +117,42 @@ Do not automatically re-enable the known OOM-prone old worker. Restore the prior
 bridge bundle if needed. Leave additive tables/columns/index and all receipts;
 no destructive schema rollback or evidence deletion is necessary.
 
+## Deployment checkpoint — 2026-09-10 04:14Z
+
+PR #9 merged as `4df80d9cda912a3e2b64bfcd6e87af57dac2b6cd`; Render is running
+that exact revision. The first deployment still received the old exhausted run
+ID and correctly parked without another provider attempt. After verifying the
+non-secret setting in Render, the corrected deployment connected at
+04:12:05.786Z (00:12:05 ET). No counter file was removed or reset.
+
+- `recovery-20260908-96587a6`: still 5 attempts.
+- `recovery-20260910-capacity-v1`: 1 attempt, limit still 5.
+- 3 raw symbols (ADBE, QQQ, SPY) and 69 research-bar symbols acknowledged on one
+  socket. Crypto exclusions unchanged. Current active proposals/open positions: 0.
+- Heartbeats through 04:14:07.232Z: queue 0 bytes, process RSS 116,027,392 bytes,
+  no failure reason. Status remains blocked/unknown-or-stale, correctly, because
+  this is outside the US equity session and no fresh market data has arrived.
+- The actual Render-to-PostgREST write paths were tested with exactly two retained
+  immutable **TEST-only** receipts: `TEST:capacity-release-20260910:trade` and
+  `TEST:capacity-release-20260910:bar`. Both have `is_test=true`; the raw receipt
+  also has `gap=true`. Database insertion times were 04:13:57.140265Z and
+  04:13:57.187574Z. They are excluded from every production acceptance query and
+  cannot create a trigger or qualify a trade. These are not live market events.
+- Bridge v21 source readback matches the deployed bundle exactly, hash
+  `71062f0f8a2c96c93c7d4d8122b5289da2435db308707e1307f9aac13c3f96fa`.
+  Custom authentication is unchanged. A no-key request was rejected. The Render
+  database credential was also rejected by the bridge's separate pinned-key
+  check; it is not proof of a Mac bridge session. An authenticated Mac request
+  using its configured bridge credential remains to be verified. No auth gate
+  was broadened to make the diagnostic pass.
+- Latest naturally recorded Morrow run remains September 8, 14:06:58.220768Z,
+  with actual provider/model/reasoning/runtime evidence NULL. This repair did not
+  fabricate, schedule, or execute a replacement reasoning job.
+
+**Remaining release gates:** sustained regular-session feed persistence at and
+after the September 10 open; actual scheduled Mac execution/synchronization with
+runtime attribution. None of the off-hours checks above clears those gates.
+
 References: [Alpaca stream protocol](https://docs.alpaca.markets/us/docs/streaming-market-data),
 [SIP bars and revisions](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data),
 [Supabase bulk inserts](https://supabase.com/docs/reference/javascript/insert).
