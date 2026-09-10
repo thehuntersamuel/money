@@ -74,8 +74,8 @@ independent execution evidence. GPT-5.6/high route intent is unchanged.
 
 ## Tests and acceptance
 
-The baseline suite plus capacity tests passed (96 JS tests before one additional
-bridge-bar assertion, plus 22 Python tests). Key evidence:
+The final suite passed (97 JavaScript tests plus 22 Python tests), and GitHub CI
+passed for PR #9. Key evidence:
 
 - 200,000 cached calendar calls: ~0.4–0.5 seconds, <30 MB incremental RSS.
 - 200,000 paginated replay records consumed without accumulating return records.
@@ -98,7 +98,8 @@ compute automatically. Review the measured bottleneck and new capacity evidence.
 
 ## Ordered deployment and reversible rollback
 
-1. Apply additive `20260910042000_morrow_sip_capacity.sql`.
+1. Apply additive `20260910040422_morrow_sip_capacity.sql` (already applied;
+   filename reconciles the actual migration ledger, not a second migration).
 2. Deploy bridge with exact existing service-key custom authentication and
    existing `verify_jwt=false`; do not alter the separate morrow-data JWT setting.
 3. Deploy the tested worker revision with auto-deploy still off. Preserve
