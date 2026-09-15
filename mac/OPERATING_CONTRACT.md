@@ -14,7 +14,7 @@ Research may continue with explicitly labeled public observations, but no new pa
 
 Existing open positions retain their recorded exit obligations. Use only the approved paper close bridge and a separate read-back; do not bypass failed closes with raw SQL or browser mutations. Escalate failure rather than falsely marking a position closed.
 
-No Grok, xAI, or X API acquisition or use. Alpaca SIP and Tiingo are proposed integrations until actual entitlement, licensing and data canaries pass. Paid coverage cannot be inferred from credentials existing. Do not count Yahoo or IEX observations as consolidated SIP.
+No Grok, xAI, or X API acquisition or use. Alpaca SIP and Tiingo have been provisioned; verify current entitlement, permitted use, data timestamps and receipts on each relevant path. Historical setup-stage unavailable messages are not current evidence. Paid coverage cannot be inferred from credentials existing. Do not count Yahoo or IEX observations as consolidated SIP.
 
 ## Cadence in America/New_York
 - 09:45 weekdays: market context, material filings/news, at most five full candidate reviews, two highest-priority causal theses developed deeply. Price never constitutes a thesis.

@@ -25,3 +25,9 @@ test('provider UI never promotes missing, blocked, future or stale receipts to h
   assert.equal(present({available:true,rows:[{dataset:'alpaca_sip',status,checked_at:new Date(at).toISOString()}]},'alpaca_sip',now).title,title);
  }
 });
+test('week-old paid-data samples need refresh without asserting the provider is down',()=>{
+ for(const dataset of ['tiingo_eod','tiingo_news']){
+  const r=present({available:true,rows:[{dataset,status:'ok',checked_at:new Date(now-7*86400000).toISOString()}]},dataset,now);
+  assert.equal(r.title,'Saved sample needs refresh');assert.match(r.note,/does not establish current provider availability/);
+ }
+});

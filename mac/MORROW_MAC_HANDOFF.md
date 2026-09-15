@@ -1,5 +1,19 @@
 # Maddox: install the Morrow research runtime
 
+## September 15 reporting repair — read first
+
+Older version numbers and provisioning descriptions below are historical setup instructions. The reviewed reporting release is identified by the Git commit containing this section and `docs/MORROW_REPORTING_REPAIR_20260915.md`. Do not downgrade the worker or restore old provisioning flags.
+
+The cloud UI now shows source-linked proposal reviews alongside the separate research ledger, ordered by actual research time. It preserves historical job failures without treating them as current checks of every component. This presentation does not synthesize a scheduled run or a runtime-model receipt.
+
+Successful licensed Tiingo history/news queries now attempt snapshot and health persistence on the existing bridge. Check `persistence.status` and its independent readback receipt. `saved` means a bounded query sample was saved; `persistence_failed` or `snapshot_saved_health_failed` needs technical review. A provider result can remain usable even when saving its receipt failed. Broad news and ticker news remain distinct query scopes. Do not infer complete market coverage.
+
+Maddox must install this release using the existing backup/rollback installer below, then run the existing sync once. The revised sync gives previously unattempted records priority and rotates older rejected records through a 100-network-attempt budget. Invalid canaries remain in immutable history and in issue reports; they do not consume network-attempt slots or justify discarding independent valid records. `partial` with a positive `synced` count means some records arrived and some remain unresolved; it is not total success or total failure.
+
+Inspect pending IDs and dependency chains privately. Correct invalid research by creating a new properly attributed record with a new idempotency key and valid references. Do not delete or rewrite the invalid original, invent a model receipt, or repeatedly increase budgets. Apply the updated common instructions in `JOB_AMENDMENTS.md` to the existing six jobs using supported per-job edits, preserving schedules, model settings, delivery and guards. Confirm actual scheduler count instead of assuming the old over-limit error remains current.
+
+Acceptance belongs to Maddox on the Mac: installed file hashes and rollback manifest; authenticated provider query/snapshot receipt; valid independent local records syncing despite an invalid canary; the next naturally scheduled run's true provider/model/reasoning/runtime evidence (unknown if absent); and its server readback. The cloud deployment cannot verify a Mac it cannot access. Do not call this installation complete from a GitHub merge.
+
 Owner: Hunter. Implementation owner on Mac: Maddox. Research user: Morrow.
 Status: installable research preparation; NOT live provider integration or trading readiness.
 Hunter explicitly deferred adding Alpaca and Tiingo until the infrastructure is ready.
