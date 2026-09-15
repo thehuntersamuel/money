@@ -109,6 +109,31 @@ class BridgeSafetyTests(unittest.TestCase):
 if __name__=='__main__': unittest.main()
 
 class RuntimeSyncTests(unittest.TestCase):
+ def test_failed_batch_does_not_starve_newer_valid_record(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)
+   for i in range(100):runtime.append(root,'audit',f'TEST:old:{i}',{'subject':'TEST old rejection','status':'blocked'})
+   good=runtime.append(root,'audit','TEST:new',{'subject':'TEST independent','status':'blocked'})['id']
+   def bridge(op,payload=None):
+    if op=='research_state':return {'ok':True,'operation':op}
+    if payload['record']['idempotency_key']!='mac:'+good:raise RuntimeError('TEST server rejection')
+    return {'receipt':{'verified':True,'id':'10000000-0000-0000-0000-000000000001','server_sha256':'a'*64}}
+   first=runtime.sync(root,bridge);self.assertEqual(first['attempted'],100);self.assertEqual(first['pending'],101)
+   second=runtime.sync(root,bridge);self.assertEqual(second['synced'],1);self.assertEqual(second['pending'],100)
+   self.assertLessEqual(second['attempted'],100);self.assertEqual(len(list(runtime.export(root))),101)
+ def test_invalid_canary_rows_do_not_consume_network_budget(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);db=runtime.connect(root)
+   with db:
+    for i in range(101):db.execute('INSERT INTO records VALUES(?,?,?,?,?,?)',(f'TEST-invalid-{i}','audit',f'TEST:invalid:{i}','2026-09-05T00:00:00Z','{}','a'*64))
+   db.close()
+   runtime.append(root,'audit','TEST:good',{'subject':'TEST valid','status':'blocked'})
+   def bridge(op,payload=None):
+    if op=='research_state':return {'ok':True,'operation':op}
+    return {'receipt':{'verified':True,'id':'10000000-0000-0000-0000-000000000001','server_sha256':'a'*64}}
+   result=runtime.sync(root,bridge)
+   self.assertEqual(result['synced'],1);self.assertEqual(result['attempted'],1);self.assertEqual(result['pending'],101)
+   self.assertEqual(result['issue_count'],101);self.assertEqual(len(result['issues']),100)
  def test_rejected_source_does_not_block_independent_records_or_lose_history(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp)

@@ -159,15 +159,20 @@ def sync(root, call=None):
  db=connect(root)
  try:
   mapping=dict(db.execute('SELECT local_id,remote_id FROM sync_receipts'))
+  # Operational attempt history is separate from immutable research. Old rejected
+  # records must not monopolize each bounded batch and starve newer valid records.
+  db.execute('CREATE TABLE IF NOT EXISTS sync_attempt_log(id INTEGER PRIMARY KEY AUTOINCREMENT,local_id TEXT NOT NULL REFERENCES records(id),attempted_at TEXT NOT NULL)')
+  db.execute('CREATE INDEX IF NOT EXISTS sync_attempt_record ON sync_attempt_log(local_id,id)')
+  previous=dict(db.execute('SELECT local_id,MAX(id) FROM sync_attempt_log GROUP BY local_id'))
   synced=0;issues=[];attempted=0
   records=list(export(root));local_ids={record['id'] for record in records}
+  records.sort(key=lambda record: previous.get(record['id'],0))
   def issue(record,reason):
    issues.append({'local_id':record['id'],'reason':reason})
    with db: db.execute('INSERT OR IGNORE INTO sync_issues VALUES(?,?,?)',(record['id'],reason,now()))
   for record in records:
    if record['id'] in mapping: continue
    if attempted>=100: break
-   attempted+=1
    try:
     validate(record['kind'],record['payload'])
     expected=hashlib.sha256((record['kind']+'\n'+canonical(record['payload'])).encode()).hexdigest()
@@ -182,6 +187,8 @@ def sync(root, call=None):
     if key in payload: payload[key]=[mapping.get(v,v) for v in payload[key]]
    for key in ('strategy_id','decision_id'):
     if payload.get(key): payload[key]=mapping.get(payload[key],payload[key])
+   attempted+=1
+   with db: db.execute('INSERT INTO sync_attempt_log(local_id,attempted_at) VALUES(?,?)',(record['id'],now()))
    try:
     result=call('record_research',{'record':{'kind':record['kind'],'idempotency_key':'mac:'+record['id'],'payload':payload}})
    except (RuntimeError,ValueError,OSError):
@@ -194,7 +201,8 @@ def sync(root, call=None):
     stored=db.execute('SELECT remote_id,server_sha256 FROM sync_receipts WHERE local_id=?',(record['id'],)).fetchone()
     if stored!=(receipt['id'],receipt['server_sha256']): raise ValueError('sync receipt conflict')
    mapping[record['id']]=receipt['id'];synced+=1
-  return {'synced':synced,'status':'partial' if issues else 'ok','issues':issues,'pending':sum(r['id'] not in mapping for r in records),'new_openings_allowed':False,'provider_credentials_read':False}
+  pending=sum(r['id'] not in mapping for r in records)
+  return {'synced':synced,'status':'partial' if pending else 'ok','issues':issues[:100],'issue_count':len(issues),'attempted':attempted,'pending':pending,'batch_limit':100,'new_openings_allowed':False,'provider_credentials_read':False}
  finally: db.close()
 
 def main():

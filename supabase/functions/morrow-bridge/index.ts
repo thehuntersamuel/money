@@ -1,6 +1,7 @@
 import { makeDiscovery } from '../../../server/discovery.mjs';
 import { fetchSource } from '../../../server/source-pipelines.mjs';
 import { ensureResearchWatchlist } from './watchlist.mjs';
+import { persistQueryReceipt } from './query-receipts.mjs';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import {
   buildStateProjection,
@@ -67,7 +68,8 @@ Deno.serve(async (request) => {
           if(result.blocked||result.displayAllowed===false)result={status:'blocked',reason:result.blocked||'source_display_not_approved'};
           else result={status:'ok',...result};
         }else {discoveryGateway ||= makeDiscovery({config});result=await discoveryGateway(body);}
-        return reply(200,{ok:true,operation,result,mutation_calls:0});
+        const persistence=await persistQueryReceipt(db,body,result,config);
+        return reply(200,{ok:true,operation,result,persistence,mutation_calls:persistence.mutation_calls});
       }catch(error){const message=error instanceof Error?error.message:'';const category=/^provider_http_[0-9]{3}$/.test(message)||message==='provider_network_failure'?message:'request_or_payload_invalid';return reply(503,{error:'research unavailable',category,mutation_calls:0});}
     }
 

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta name="morrow-reporting-release" content="2026-09-15-r1">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
@@ -2926,7 +2927,8 @@ function renderMorrowWorkbench(book){
   var rows=(research.rows||[]).filter(function(r){return r.book_id===book.book_id;});
   var runs=rows.filter(function(r){return r.kind==="run";}), strategies=rows.filter(function(r){return r.kind==="strategy";});
   var outcomes=rows.filter(function(r){return r.kind==="outcome";}), evaluations=rows.filter(function(r){return r.kind==="evaluation";});
-  var latest=runs[0], last=latest?latest.payload:{}, evaluation=evaluations[0], roi=evaluation?evaluation.payload.result||{}:{};
+  var runReport=runPresentation(rows,book.book_id,Date.now());
+  var latest=runReport.row, last=latest?latest.payload:{}, evaluation=evaluations[0], roi=evaluation?evaluation.payload.result||{}:{};
   function panel(title,items,note){return '<details class="morrow-panel"><summary>'+esc(title)+'</summary><dl>'+items.map(function(pair){return '<dt>'+esc(pair[0])+'</dt><dd>'+esc(pair[1]==null?'Unknown':String(pair[1]))+'</dd>';}).join('')+'</dl><p>'+esc(note)+'</p></details>';}
   function dollars(value){return typeof value==='number'&&isFinite(value)?fmt2(value):'Unavailable';}
   var health=(D.integrationHealth||{}).rows||[];
@@ -2934,7 +2936,8 @@ function renderMorrowWorkbench(book){
   var scope=research.available?'Latest '+rows.length+' server records'+(research.truncated?' · older history not loaded':''):'Server research projection unavailable';
   $("morrow-operations").innerHTML=active?'<div class="morrow-panels">'
     +panel('Data health',[['Alpaca SIP',feedStatus('alpaca_sip')],['Tiingo history',feedStatus('tiingo_eod')],['Tiingo news',feedStatus('tiingo_news')],['SEC filings',feedStatus('sec_submissions')],['SEC facts',feedStatus('sec_facts')],['BLS',feedStatus('bls_series')],['Dated macro',feedStatus('fred_vintage')],['Primary sources',feedStatus('primary_document')],['Research sync',scope],['Queue',D.proposalQueueStatus?.complete===false?D.proposalQueueStatus.reason:'Loaded']],'Keys and entitlement canaries are required before paid data can qualify an idea. Current board prices do not certify consolidated SIP coverage.')
-    +panel('Operations · '+(latest?'recorded run':'awaiting first run'),[['Last job',last.job_id],['Recorded finish',last.finished_at],['Reported model',last.actual_model],['Reported status',last.status],['Route verification','Runtime attestation pending']], 'Run claims are persisted, but a configured or self-reported model is not independent execution proof. Six reasoning jobs and the existing guard remain the intended schedule.')
+    +panel('Operations · '+runReport.title,[['Last recorded job',last.job_id],['Run finished',last.finished_at],['Receipt saved',latest?.created_at],['Reported provider',last.actual_provider],['Reported model',last.actual_model],['Reported reasoning',last.actual_reasoning_effort],['Status of that run',last.status],['Runtime evidence reference',last.runtime_evidence_id],['Independent route verification','Not certified by this dashboard']], runReport.note+' Six reasoning jobs and the existing guard remain the intended schedule.')
+    +(runReport.blockers.length?'<details class="morrow-panel"><summary>'+esc(runReport.stale?'Historical failures · current resolution requires evidence':'Reported job blockers')+'</summary><p>Reported for the run ending '+esc(last.finished_at||'unknown')+'. These messages are preserved; current provider health is shown separately.</p><ul>'+runReport.blockers.map(function(b){return '<li>'+esc(b)+'</li>';}).join('')+'</ul><p>A new proposal review does not clear scheduler, synchronization, personal-finance or execution-evidence blockers.</p></details>':'')
     +panel('Experiment lab · exploratory',[['Recorded strategy proposals',strategies.length],['Recorded outcomes',outcomes.length],['Champion','Not activated'],['Evaluation clock','Not started']],scope+'. Strategy records cannot promote themselves. Watch and rejected outcomes stay separate from executed paper results.')
     +panel('ROI · '+(evaluation?'unverified reported accounting':'awaiting matched outcomes'),[['Gross P&L',dollars(roi.gross_pnl)],['Transaction costs',dollars(roi.transaction_costs)],['Fixed costs',dollars(roi.fixed_costs)],['Net result',dollars(roi.net_active_result)],['Matched benchmark excess',dollars(roi.benchmark_excess)],['Best outcome removed',dollars(roi.best_opportunity_removed)],['Drawdown',roi.drawdown==null?'Unavailable':(100*roi.drawdown).toFixed(2)+'%'],['Regime / sector','Awaiting verified classified outcomes']],evaluation?'Period '+evaluation.payload.period_start+' to '+evaluation.payload.period_end+'. '+(roi.uncertainty||'Accounting requires source verification.'):'Unknown costs and unmatched outcomes remain unavailable. This is not the overall account return.')
     +'</div>':"";
@@ -3587,6 +3590,38 @@ async function boot(){
 }
 
 function decisionLabel(state){return ({watch:'Watching',rejected:'Passed on',qualified:'Reviewed · not purchased',opened:'Paper position',closed:'Completed',expired:'Expired',cancelled:'Cancelled'})[state]||'Status unknown';}
+function mergedResearchView(records, proposals, bookId){
+ var rows=(records||[]).filter(function(r){return r.book_id===bookId;}).slice();
+ (proposals||[]).filter(function(p){return p.book_id===bookId;}).forEach(function(p){
+  if(!p.thesis)return;
+  var sourceIds=[];
+  (Array.isArray(p.evidence)?p.evidence:[]).forEach(function(s,i){
+   var id='proposal-source:'+p.id+':'+i;sourceIds.push(id);
+   rows.push({id:id,book_id:bookId,kind:'source',payload:{url:s.url,title:s.title,retrieved_at:s.retrieved_at,source_type:s.source_type,retention_note:'Source recorded with the proposal. Retrieval is reported; this is not an independent provider receipt.'}});
+  });
+  rows.push({id:'proposal:'+p.id,book_id:bookId,kind:'decision',created_at:p.last_researched_at||p.updated_at,
+   projection:'saved_proposal',saved_at:p.updated_at,payload:{proposal_key:p.proposal_key,symbol:p.symbol,
+    disposition:({watch:'watch',rejected:'rejected',qualified:'proposal_qualified',opened:'proposal_opened',closed:'proposal_closed',expired:'expired',cancelled:'cancelled'})[p.state]||'unknown',
+    thesis:p.thesis,bear_case:p.bear_case,catalyst:p.catalyst,review_at:p.review_on,benchmark:p.benchmark,horizon:p.horizon,
+    decision_reason:p.rejection_reason,source_ids:sourceIds,assumptions:p.assumptions,
+    missing_data:Array.isArray(p.unresolved_claims)?p.unresolved_claims:[]}});
+ });
+ var seen=new Set();
+ var decisions=rows.filter(function(r){return r.kind==='decision';}).sort(function(a,b){return (Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0);}).filter(function(r){
+  var key=r.payload?.proposal_key||r.id;if(seen.has(key))return false;seen.add(key);return true;
+ });
+ return {rows:rows,decisions:decisions};
+}
+function runPresentation(records, bookId, now){
+ var runs=(records||[]).filter(function(r){return r.book_id===bookId&&r.kind==='run';}).sort(function(a,b){return (Date.parse(b.payload?.finished_at)||0)-(Date.parse(a.payload?.finished_at)||0);});
+ var row=runs[0];if(!row)return {title:'Job execution unverified',note:'No job receipt is available. Saved reviews do not prove that every scheduled job ran.',blockers:[]};
+ var p=row.payload||{},age=now-Date.parse(p.finished_at),stale=!Number.isFinite(age)||age<0||age>36*3600000;
+ var messages={persisted_sip_stale_during_regular_session:'Saved market prices were stale during that run.',tiingo_eod_data_unavailable:'Tiingo daily history was unavailable to that run.',personal_finance_native_tool_unavailable:'The personal-finance reader was unavailable.',active_morrow_job_limit_exceeded:'The scheduler reported too many Morrow jobs.',runtime_sync_blocked_by_invalid_canary_record:'A validation record blocked the local research sync.',portfolio_changed_reconcile_before_conclusions:'The portfolio needed reconciliation.'};
+ var blockers=(p.blockers||[]).map(function(v){return messages[v]||String(v).replace(/_/g,' ');});
+ return {title:stale?'Job receipts overdue':p.status==='failed'||p.status==='blocked'?'Latest job needs attention':'Job receipt received',
+  note:stale?'This is a historical run report, not a current check of every component. The Mac must sync newer execution receipts.':'A received report does not independently verify its model or authorize trading.',
+  row:row,payload:p,stale:stale,blockers:blockers};
+}
 function providerPresentation(health, dataset, now){
   if(!health||!health.available)return {title:'Status unavailable',note:'The Hub could not load provider health. Connection and freshness are unverified.'};
   var row=(health.rows||[]).find(function(r){return r.dataset===dataset;});
@@ -3602,8 +3637,11 @@ function providerPresentation(health, dataset, now){
     return {title:'Price feed stopped',note:note,at:row.checked_at};
   }
   if(!Number.isFinite(age)||age<0)return {title:'Receipt needs refresh',note:'The report time could not be verified.',at:row.checked_at};
-  if(row.status==='ok'&&dataset==='tiingo_eod')return {title:'Daily history saved',note:'A limited daily-price history is available for research. Check its date range; it is not a live trading quote.',at:row.checked_at};
-  if(row.status==='ok'&&dataset==='tiingo_news')return {title:'News sample saved',note:/partial|limit/.test(row.coverage||'')?'This sample has incomplete coverage. Some stories may be excluded or outside its size limit; claims still need source checks.':'A news sample is available for research. Check story dates and verify material claims with original sources.',at:row.checked_at};
+  if(row.status==='ok'&&(dataset==='tiingo_eod'||dataset==='tiingo_news')){
+    var old=age>(dataset==='tiingo_news'?24:96)*3600000;
+    return {title:old?'Saved sample needs refresh':dataset==='tiingo_eod'?'Daily history saved':'News sample saved',
+      note:(old?'This saved sample is old; it does not establish current provider availability. ':'')+(dataset==='tiingo_eod'?'Only the requested symbols and daily-history window were saved. Verify the latest trading date before use.':'Only the requested news sample was saved. A ticker query is not market-wide coverage; capped results may omit stories.')+' On-demand reads and continuous prices are separate.',at:row.checked_at};
+  }
   if(age>600000)return {title:'Receipt needs refresh',note:'The last report is too old to establish current feed health.',at:row.checked_at};
   return {title:row.status==='ok'?'Feed reporting healthy':row.status==='failed'?'Feed needs attention':'Awaiting verified coverage',note:row.status==='failed'?'The latest data check failed and needs investigation.':row.status==='ok'?'The latest worker report passed its freshness checks.':/^stale_symbols:/.test(row.coverage||'')?'Waiting for fresh consolidated prices. Saved prices are not current enough for entry decisions.':'Coverage is not yet verified for entry decisions.',at:row.checked_at};
 }
@@ -3611,23 +3649,23 @@ function renderMorrowSummary(book){
  var proposals=(D.proposals||[]).filter(function(p){return p.book_id===book.book_id;});
  var positions=(D.trades||[]).filter(function(t){return t.book_id===book.book_id&&t.status==='open'&&t.is_real===false;});
  var complete=D.proposalQueueStatus?.complete!==false;
- var research=D.research||{};var runs=(research.rows||[]).filter(function(r){return r.book_id===book.book_id&&r.kind==='run';});
- $('trade-story').innerHTML='<section class="card hub-story"><h2>'+ (positions.length?positions.length+' paper position'+(positions.length===1?' is':'s are')+' open':'No paper positions are open')+'</h2><p>Paper trading is a simulation: the position ledger below shows recorded practice trades, not purchases in your brokerage account.</p><p>'+ (complete?proposals.filter(function(p){return p.state==='watch';}).length+' ideas being watched · '+proposals.filter(function(p){return p.state==='rejected';}).length+' ideas passed on':'Research queue is incomplete; decision totals are unavailable.')+'</p><p>'+ (runs.length?'Latest saved job receipt: '+esc(ago(runs[0].created_at))+'. Reported execution details are below.':'No Morrow job receipts have synced for this book. Current research records do not prove the Mac jobs are running.')+'</p></section>';
+ var research=D.research||{},view=mergedResearchView(research.rows,proposals,book.book_id),run=runPresentation(research.rows,book.book_id,Date.now());
+ $('trade-story').innerHTML='<section class="card hub-story"><h2>'+ (positions.length?positions.length+' paper position'+(positions.length===1?' is':'s are')+' open':'No paper positions are open')+'</h2><p>Paper trading is a simulation: the position ledger below shows recorded practice trades, not purchases in your brokerage account.</p><p>'+ (complete?proposals.filter(function(p){return p.state==='watch';}).length+' ideas being watched · '+proposals.filter(function(p){return p.state==='rejected';}).length+' ideas passed on':'Research queue is incomplete; decision totals are unavailable.')+'</p><p>Latest saved research: '+esc(view.decisions[0]?.created_at||'Unavailable')+'.</p><p><strong>'+esc(run.title)+'</strong> · '+esc(run.payload?.finished_at||'No receipt')+'</p><p>'+esc(run.note)+'</p></section>';
  $('morrow-data').innerHTML='<div class="hub-feeds">'+[['alpaca_sip','Alpaca · consolidated prices'],['tiingo_eod','Tiingo · daily history'],['tiingo_news','Tiingo · news']].map(function(pair){var state=providerPresentation(D.integrationHealth,pair[0],Date.now());return '<section class="card hub-feed"><h3>'+esc(pair[1])+'</h3><strong>'+esc(state.title)+'</strong><p>'+esc(state.note)+'</p>'+(state.at?'<time>'+esc(state.at)+'</time>':'')+'</section>';}).join('')+'</div>';
  var recent=proposals.slice().sort(function(a,b){return (Date.parse(b.updated_at)||0)-(Date.parse(a.updated_at)||0);}).slice(0,6);
  $('morrow-timeline').innerHTML=recent.length?'<ul class="hub-decisions">'+recent.map(function(p){return '<li><strong>'+esc(p.symbol)+' · '+esc(decisionLabel(p.state))+'</strong><p>'+esc(p.rejection_reason||p.thesis||'No explanation recorded.')+'</p><time>Saved '+esc(ago(p.updated_at))+'</time></li>';}).join('')+'</ul><p class="small muted">Latest saved state for each idea, not a complete event history. Expand the research below for sources, risks, and conditions.</p>':'<p class="muted">No saved decisions for this book yet.</p>';
- var decisions=(research.rows||[]).filter(function(r){return r.book_id===book.book_id&&r.kind==='decision';});
- var seen=new Set();decisions=decisions.slice().sort(function(a,b){return Date.parse(b.created_at)-Date.parse(a.created_at);}).filter(function(r){var key=r.payload?.proposal_key||r.id;if(seen.has(key))return false;seen.add(key);return true;});
+ var decisions=view.decisions;
  var researchHtml='<h3>Research notes</h3><p class="small muted">Watch and pass decisions can be saved before an entry price or trading plan exists. These notes do not authorize a trade.</p>';
- if(!research.available)researchHtml+='<p>Research notes could not be loaded. Refresh to try again.</p>';
- else if(!decisions.length)researchHtml+='<p class="muted">No research notes in the loaded history.</p>';
- else researchHtml+=decisions.slice(0,10).map(function(r){return researchDecisionHTML(r,research.rows||[]);}).join('');
+ if(!research.available)researchHtml+='<p>Separate research-ledger records could not be loaded. Any saved proposal reviews below remain available; history is incomplete.</p>';
+ if(!complete)researchHtml+='<p>Proposal history is incomplete. Do not treat the loaded notes as a complete research record.</p>';
+ if(!decisions.length)researchHtml+='<p class="muted">No research notes in the loaded history.</p>';
+ else researchHtml+=decisions.slice(0,10).map(function(r){return researchDecisionHTML(r,view.rows);}).join('');
  if(research.truncated||decisions.length>10)researchHtml+='<p class="small muted">Showing recent research only; older records may not be included.</p>';
  $('morrow-timeline').innerHTML=researchHtml+$('morrow-timeline').innerHTML;
 }
 function researchDecisionHTML(record,records){
  var p=record.payload||{};
- var label=({watch:'Watching · research only',rejected:'Passed on',research_qualified:'Research reviewed · not purchased',shadow:'Shadow research · not purchased'})[p.disposition]||'Status unknown';
+ var label=({watch:'Watching · research only',rejected:'Passed on',research_qualified:'Research reviewed · not purchased',shadow:'Shadow research · not purchased',proposal_qualified:'Proposal qualified · entries still gated',proposal_opened:'Paper position',proposal_closed:'Completed',expired:'Expired',cancelled:'Cancelled'})[p.disposition]||'Status unknown';
  function paragraph(title,value){return value?'<h4>'+esc(title)+'</h4><p>'+esc(String(value))+'</p>':'';}
  function bullets(title,values){return Array.isArray(values)&&values.length?'<h4>'+esc(title)+'</h4><ul>'+values.map(function(v){return '<li>'+esc(String(v))+'</li>';}).join('')+'</ul>':'';}
  var sources=(p.source_ids||[]).map(function(id){var r=records.find(function(s){return s.id===id&&s.kind==='source'&&s.book_id===record.book_id;});
@@ -3635,7 +3673,7 @@ function researchDecisionHTML(record,records){
   var s=r.payload||{},link='';try{var u=new URL(s.url);if(u.protocol==='https:'&&!u.username&&!u.password)link=u.href;}catch(e){}
   return '<li>'+(link?'<a href="'+esc(link)+'" target="_blank" rel="noopener noreferrer">'+esc(s.title||'Source')+'</a>':esc(s.title||'Source unavailable'))+'<p class="small muted">Retrieved '+esc(s.retrieved_at||'unknown')+(s.released_at?' · Published '+esc(s.released_at):' · Exact publication time unavailable')+'</p>'+paragraph('Source context',s.retention_note)+'</li>';
  }).join('');
- return '<details class="morrow-panel" style="margin-bottom:12px;overflow-wrap:anywhere"><summary>'+esc(p.symbol||'Unknown symbol')+' · '+esc(label)+'</summary>'+paragraph('Why this is being watched',p.thesis)+paragraph('What could go wrong',p.bear_case)+paragraph('What happens next',p.catalyst)+paragraph('Review time',p.review_at)+paragraph('Comparison and horizon',(p.benchmark||'Unknown')+' · '+(p.horizon||'Unknown'))+bullets('Assumptions and risk limits',p.assumptions)+bullets('Still missing',p.missing_data)+(sources?'<h4>Sources</h4><ul>'+sources+'</ul>':'<p>No sources linked.</p>')+'<p class="small muted">Saved '+esc(record.created_at||'unknown')+' · Record '+esc(record.id)+'</p></details>';
+ return '<details class="morrow-panel" style="margin-bottom:12px;overflow-wrap:anywhere"><summary>'+esc(p.symbol||'Unknown symbol')+' · '+esc(label)+'</summary>'+(record.projection?'<p class="small muted">Saved proposal review. This is not a job-execution receipt.</p>':'')+paragraph('Research thesis',p.thesis)+paragraph('Why this decision',p.decision_reason)+paragraph('What could go wrong',p.bear_case)+paragraph('Catalyst and next review',p.catalyst)+paragraph('Review time',p.review_at)+paragraph('Comparison and horizon',(p.benchmark||'Unknown')+' · '+(p.horizon||'Unknown'))+bullets('Assumptions and risk limits',p.assumptions)+bullets('Still missing',p.missing_data)+(sources?'<h4>Sources</h4><ul>'+sources+'</ul>':'<p>No sources linked.</p>')+'<p class="small muted">Research time '+esc(record.created_at||'unknown')+' · Saved '+esc(record.saved_at||record.created_at||'unknown')+' · Record '+esc(record.id)+'</p></details>';
 }
 function updateThemeLabel(){var light=document.documentElement.dataset.theme==='light';$('theme-toggle').textContent=light?'Dark mode':'Light mode';$('theme-toggle').setAttribute('aria-label','Switch to '+(light?'dark':'light')+' mode');}
 updateThemeLabel();
